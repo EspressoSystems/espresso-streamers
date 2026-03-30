@@ -1,4 +1,4 @@
-package op
+package streamer
 
 import (
 	"context"
@@ -34,7 +34,7 @@ func TestNewEspressoStreamer(t *testing.T) {
 		1,
 		nil,
 		nil,
-		nil, nil, nil, CreateEspressoBatchUnmarshaler([]common.Address{}),
+		nil, nil, nil, CreateEspressoBatchUnmarshaler(common.Address{}),
 		0,
 		1,
 	)
@@ -387,7 +387,7 @@ func createL2BlockRef(height uint64, l1Ref eth.L1BlockRef) eth.L2BlockRef {
 // setupStreamerTesting initializes a MockStreamerSource and an EspressoStreamer
 // for testing purposes. It sets up the initial state of the MockStreamerSource
 // and returns both the MockStreamerSource and the EspressoStreamer.
-func setupStreamerTesting(namespace uint64, batcherAddresses []common.Address) (*MockStreamerSource, *BatchStreamer[EspressoBatch]) {
+func setupStreamerTesting(namespace uint64, batcherAddress common.Address) (*MockStreamerSource, *BatchStreamer[EspressoBatch]) {
 	state := NewMockStreamerSource()
 
 	logger := new(NoOpLogger)
@@ -398,7 +398,7 @@ func setupStreamerTesting(namespace uint64, batcherAddresses []common.Address) (
 		state,
 		state,
 		logger,
-		CreateEspressoBatchUnmarshaler(batcherAddresses),
+		CreateEspressoBatchUnmarshaler(batcherAddress),
 		0,
 		1,
 	)
@@ -461,7 +461,7 @@ func TestStreamerSmoke(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	state, streamer := setupStreamerTesting(42, []common.Address{})
+	state, streamer := setupStreamerTesting(42, common.Address{})
 
 	// update the state of our streamer
 	syncStatus := state.SyncStatus()
@@ -495,7 +495,7 @@ func TestEspressoStreamerSimpleIncremental(t *testing.T) {
 	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
-	state, streamer := setupStreamerTesting(namespace, []common.Address{signerAddress})
+	state, streamer := setupStreamerTesting(namespace, signerAddress)
 	rng := rand.New(rand.NewSource(0))
 	// The number of batches to create
 	const N = 1000
@@ -555,7 +555,7 @@ func TestEspressoStreamerIncrementalDelayedConsumption(t *testing.T) {
 	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
-	state, streamer := setupStreamerTesting(namespace, []common.Address{signerAddress})
+	state, streamer := setupStreamerTesting(namespace, signerAddress)
 	rng := rand.New(rand.NewSource(0))
 
 	// The number of batches to create
@@ -628,7 +628,7 @@ func TestStreamerEspressoOutOfOrder(t *testing.T) {
 	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
-	state, streamer := setupStreamerTesting(namespace, []common.Address{signerAddress})
+	state, streamer := setupStreamerTesting(namespace, signerAddress)
 	rng := rand.New(rand.NewSource(0))
 
 	// update the state of our streamer
@@ -713,7 +713,7 @@ func TestEspressoStreamerDuplicationHandling(t *testing.T) {
 	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
-	state, streamer := setupStreamerTesting(namespace, []common.Address{signerAddress})
+	state, streamer := setupStreamerTesting(namespace, signerAddress)
 	rng := rand.New(rand.NewSource(0))
 
 	// update the state of our streamer
@@ -825,7 +825,7 @@ func TestStreamerInvalidHeadBatchDiscarded(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	state, streamer := setupStreamerTesting(namespace, []common.Address{signerAddress})
+	state, streamer := setupStreamerTesting(namespace, signerAddress)
 	rng := rand.New(rand.NewSource(2))
 
 	// Refresh state - after this, BatchPos becomes 1
@@ -874,7 +874,7 @@ func TestStreamerMultipleBatchesSameNumber(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		state, streamer := setupStreamerTesting(namespace, []common.Address{signerAddress})
+		state, streamer := setupStreamerTesting(namespace, signerAddress)
 		rng := rand.New(rand.NewSource(3))
 
 		// Refresh state - after this, BatchPos becomes 1
@@ -926,7 +926,7 @@ func TestStreamerMultipleBatchesSameNumber(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		state, streamer := setupStreamerTesting(namespace, []common.Address{signerAddress})
+		state, streamer := setupStreamerTesting(namespace, signerAddress)
 		rng := rand.New(rand.NewSource(4))
 
 		// Refresh state - after this, BatchPos becomes 1
@@ -961,7 +961,7 @@ func TestStreamerMultipleBatchesSameNumber(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		state, streamer := setupStreamerTesting(namespace, []common.Address{signerAddress})
+		state, streamer := setupStreamerTesting(namespace, signerAddress)
 		rng := rand.New(rand.NewSource(5))
 
 		// Refresh state - after this, BatchPos becomes 1
@@ -1037,7 +1037,7 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 			state,
 			state,
 			logger,
-			CreateEspressoBatchUnmarshaler([]common.Address{signerAddress}),
+			CreateEspressoBatchUnmarshaler(signerAddress),
 			0,
 			0, // originBatchPos=0, so BatchPos starts at 1
 		)
@@ -1113,7 +1113,7 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 			state,
 			state,
 			logger,
-			CreateEspressoBatchUnmarshaler([]common.Address{signerAddress}),
+			CreateEspressoBatchUnmarshaler(signerAddress),
 			0,
 			0, // originBatchPos=0, so BatchPos starts at 1
 		)
@@ -1169,7 +1169,7 @@ func TestStreamerBatchOrderingDeterminism(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		state, streamer := setupStreamerTesting(namespace, []common.Address{signerAddress})
+		state, streamer := setupStreamerTesting(namespace, signerAddress)
 		rng := rand.New(rand.NewSource(8))
 
 		// Advance L1 to have two finalized blocks at heights 1 and 2
@@ -1228,7 +1228,7 @@ func TestStreamerBatchOrderingDeterminism(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		state, streamer := setupStreamerTesting(namespace, []common.Address{signerAddress})
+		state, streamer := setupStreamerTesting(namespace, signerAddress)
 		rng := rand.New(rand.NewSource(9))
 
 		// Refresh state - after this, BatchPos becomes 1
@@ -1286,7 +1286,7 @@ func TestPeek(t *testing.T) {
 	t.Run("returns valid batch without consuming it", func(t *testing.T) {
 		ctx := context.Background()
 
-		state, streamer := setupStreamerTesting(namespace, []common.Address{signerAddress})
+		state, streamer := setupStreamerTesting(namespace, signerAddress)
 		rng := rand.New(rand.NewSource(10))
 
 		syncStatus := state.SyncStatus()
@@ -1317,7 +1317,7 @@ func TestPeek(t *testing.T) {
 	t.Run("returns nil when no batches available", func(t *testing.T) {
 		ctx := context.Background()
 
-		state, streamer := setupStreamerTesting(namespace, []common.Address{signerAddress})
+		state, streamer := setupStreamerTesting(namespace, signerAddress)
 
 		syncStatus := state.SyncStatus()
 		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
@@ -1328,68 +1328,4 @@ func TestPeek(t *testing.T) {
 
 		require.Nil(t, streamer.Peek(ctx))
 	})
-}
-
-// TestStreamerCanAcceptBatchesFromMultipleBatcherAddrs tests that the streamer
-// can handle batches from multiple batcher addresses by sending batches
-// with alternating batcher addresses and ensuring they are all processed correctly.
-func TestStreamerCanAcceptBatchesFromMultipleBatcherAddrs(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	namespace := uint64(42)
-	chainID := big.NewInt(int64(namespace))
-	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
-	chainSigner := chainSignerFactory(chainID, common.Address{})
-	secondPrivateKey := "922bad152ffbdc7fa43f8b3894b771becad4978afda3c3ed090f8a97b0286f78"
-	secondChainSignerFactory, secondSignerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, secondPrivateKey, "", "", opsigner.CLIConfig{})
-
-	state, streamer := setupStreamerTesting(namespace, []common.Address{signerAddress, secondSignerAddress})
-	rng := rand.New(rand.NewSource(0))
-
-	// The number of batches to create
-	const N = 1000
-	for i := range N {
-		// Alternate between the two batcher addresses when creating batches
-		currentChainSigner := chainSigner
-		if i%2 == 0 {
-			currentChainSigner = secondChainSignerFactory(chainID, common.Address{})
-		}
-		// update the status of our streamer
-		syncStatus := state.SyncStatus()
-		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
-		require.NoError(t, err)
-
-		batch, _, _, espTxnInBlock := state.CreateEspressoTxnData(
-			ctx,
-			namespace,
-			rng,
-			chainID,
-			uint64(i)+1,
-			currentChainSigner,
-		)
-
-		state.AddEspressoTransactionData(uint64(i), namespace, espTxnInBlock)
-
-		// Update the state of our streamer
-		if have, want := streamer.Update(ctx), error(nil); !errors.Is(have, want) {
-			t.Fatalf("failed to update streamer state encountered error:\nhave:\n\t\"%v\"\nwant:\n\t\"%v\"\n", have, want)
-		}
-
-		batchFromEsp := streamer.Next(ctx)
-		require.NotNil(t, batchFromEsp, "unexpectedly did not receive a batch from streamer")
-
-		// This batch ** should ** match the one we created above.
-		if have, want := batchFromEsp.Batch.GetEpochNum(), batch.GetEpochNum(); have != want {
-			t.Fatalf("batch epoch number does not match:\nhave:\n\t%v\ndo not want:\n\t%v\n", have, want)
-		}
-
-		state.AdvanceSafeL2()
-		state.AdvanceFinalizedL1()
-	}
-
-	if have, want := len(state.EspTransactionData), N; have != want {
-		t.Fatalf("unexpected number of batches in state:\nhave:\n\t%v\nwant:\n\t%v\n", have, want)
-	}
 }

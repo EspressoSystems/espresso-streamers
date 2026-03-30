@@ -1,11 +1,10 @@
-package op
+package streamer
 
 import (
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
 	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
@@ -88,13 +87,13 @@ func BlockToEspressoBatch(rollupCfg *rollup.Config, block *types.Block) (*Espres
 // unmarshal an Espresso transaction into an EspressoBatch. The returned
 // function takes a batcherAddress as an argument to verify the signature of
 // the transaction.
-func CreateEspressoBatchUnmarshaler(batcherAddresses []common.Address) func(data []byte) (*EspressoBatch, error) {
+func CreateEspressoBatchUnmarshaler(batcherAddress common.Address) func(data []byte) (*EspressoBatch, error) {
 	return func(data []byte) (*EspressoBatch, error) {
-		return UnmarshalEspressoTransaction(data, batcherAddresses)
+		return UnmarshalEspressoTransaction(data, batcherAddress)
 	}
 }
 
-func UnmarshalEspressoTransaction(data []byte, batcherAddresses []common.Address) (*EspressoBatch, error) {
+func UnmarshalEspressoTransaction(data []byte, batcherAddress common.Address) (*EspressoBatch, error) {
 	signatureData, batchData := data[:crypto.SignatureLength], data[crypto.SignatureLength:]
 	batchHash := crypto.Keccak256(batchData)
 
@@ -102,7 +101,7 @@ func UnmarshalEspressoTransaction(data []byte, batcherAddresses []common.Address
 	if err != nil {
 		return nil, err
 	}
-	if !slices.Contains(batcherAddresses, crypto.PubkeyToAddress(*signer)) {
+	if crypto.PubkeyToAddress(*signer) != batcherAddress {
 		return nil, errors.New("invalid signer")
 	}
 
