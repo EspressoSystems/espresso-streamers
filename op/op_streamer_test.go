@@ -49,6 +49,32 @@ func TestNewEspressoStreamer(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestResetAfterNewDoesNotSkipBatch verifies that calling Reset immediately
+// after New leaves BatchPos at originBatchPos+1, not originBatchPos+2.
+// Regression test for the bug where fallbackBatchPos was initialized to
+// originBatchPos+1, causing Reset to advance BatchPos by an extra step.
+func TestResetAfterNewDoesNotSkipBatch(t *testing.T) {
+	mock := NewMockStreamerSource()
+	batchAuthAddr := common.HexToAddress("0x0000000000000000000000000000000000000001")
+	mock.TeeBatcherAddr = batchAuthAddr
+
+	const originBatchPos = uint64(5)
+	streamer, err := NewEspressoStreamer(
+		1,
+		mock,
+		mock,
+		mock, mock, new(NoOpLogger), CreateEspressoBatchUnmarshaler(),
+		0,
+		originBatchPos,
+		batchAuthAddr,
+	)
+	require.NoError(t, err)
+	require.Equal(t, originBatchPos+1, streamer.BatchPos, "BatchPos should be originBatchPos+1 after New")
+
+	streamer.Reset()
+	require.Equal(t, originBatchPos+1, streamer.BatchPos, "BatchPos should still be originBatchPos+1 after Reset, not originBatchPos+2")
+}
+
 // EspBlockAndNamespace is a struct that holds the height and namespace
 // of an Espresso block. It is used to uniquely identify a block in the
 // EspressoStreamer.

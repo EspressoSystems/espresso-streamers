@@ -159,8 +159,9 @@ func NewEspressoStreamer[B Batch](
 		Log:                      log,
 		Namespace:                namespace,
 		// Internally, BatchPos is the position of the batch we are to give out next, hence the +1
-		BatchPos:              originBatchPos + 1,
-		fallbackBatchPos:      originBatchPos + 1,
+		BatchPos: originBatchPos + 1,
+		// fallbackBatchPos represents the last safe batch, so no +1
+		fallbackBatchPos:      originBatchPos,
 		BatchBuffer:           NewBatchBuffer[B](BatchBufferCapacity),
 		finalizedL1StateCache: finalizedL1StateCache,
 		unmarshalBatch:        unmarshalBatch,
