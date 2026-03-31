@@ -383,13 +383,13 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 	s.Log.Trace("Fetching HotShot block range", "start", start, "finish", finish)
 
 	// FetchNamespaceTransactionsInRange fetches transactions in [start, finish)
-	namespaceRangeTransactions, err := s.EspressoClient.FetchNamespaceTransactionsInRange(ctx, start, finish, s.Namespace)
+	hotShotBlocks, err := s.EspressoClient.FetchNamespaceTransactionsInRange(ctx, start, finish, s.Namespace)
 	if err != nil {
 		return err
 	}
 
-	s.Log.Info("Fetched HotShot block range", "start", start, "finish", finish, "numNamespaceTransactions", len(namespaceRangeTransactions))
-	if len(namespaceRangeTransactions) == 0 {
+	s.Log.Info("Fetched HotShot block range", "start", start, "finish", finish, "numHotShotBlocks", len(hotShotBlocks))
+	if len(hotShotBlocks) == 0 {
 		s.Log.Trace("No transactions in hotshot block range", "start", start, "finish", finish)
 	}
 
@@ -400,9 +400,9 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 	// from the Espresso Blocks without missing any blocks.
 	s.hotShotPos = finish - 1
 
-	for i, namespaceTransaction := range namespaceRangeTransactions {
+	for i, namespaceBlock := range hotShotBlocks {
 		blockPos := start + uint64(i)
-		for _, txn := range namespaceTransaction.Transactions {
+		for _, txn := range namespaceBlock.Transactions {
 			err := s.processEspressoTransaction(ctx, txn.Payload)
 			if errors.Is(err, ErrAtCapacity) {
 				// Record one block before the failing block so that after rewinding
