@@ -408,7 +408,7 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 				// Record one block before the failing block so that after rewinding
 				// hotShotPos to skipPos, the next computeEspressoBlockHeightsRange
 				// starts scanning from blockPos (not blockPos+1).
-				var rewindTo uint64
+				rewindTo := uint64(0)
 				if blockPos > 0 {
 					rewindTo = blockPos - 1
 				}
