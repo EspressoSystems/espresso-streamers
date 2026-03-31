@@ -3,7 +3,6 @@ package op
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 
 	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
@@ -23,10 +22,15 @@ type EspressoBatch struct {
 	BatchHeader   *types.Header
 	Batch         derive.SingularBatch
 	L1InfoDeposit *types.Transaction
+	SignerAddress common.Address
 }
 
 func (b EspressoBatch) Number() uint64 {
 	return b.BatchHeader.Number.Uint64()
+}
+
+func (b EspressoBatch) Signer() common.Address {
+	return b.SignerAddress
 }
 
 func (b EspressoBatch) L1Origin() eth.BlockID {
@@ -84,32 +88,30 @@ func BlockToEspressoBatch(rollupCfg *rollup.Config, block *types.Block) (*Espres
 }
 
 // CreateEspressoBatchUnmarshaler returns a function that can be used to
-// unmarshal an Espresso transaction into an EspressoBatch. The returned
-// function takes a batcherAddress as an argument to verify the signature of
-// the transaction.
-func CreateEspressoBatchUnmarshaler(batcherAddress common.Address) func(data []byte) (*EspressoBatch, error) {
+// unmarshal an Espresso transaction into an EspressoBatch.
+// The signer address is recovered from the signature and stored on the batch
+// for later verification in CheckBatch (two-phase verification).
+func CreateEspressoBatchUnmarshaler() func(data []byte) (*EspressoBatch, error) {
 	return func(data []byte) (*EspressoBatch, error) {
-		return UnmarshalEspressoTransaction(data, batcherAddress)
+		return UnmarshalEspressoTransaction(data)
 	}
 }
 
-func UnmarshalEspressoTransaction(data []byte, batcherAddress common.Address) (*EspressoBatch, error) {
+func UnmarshalEspressoTransaction(data []byte) (*EspressoBatch, error) {
 	signatureData, batchData := data[:crypto.SignatureLength], data[crypto.SignatureLength:]
 	batchHash := crypto.Keccak256(batchData)
 
-	signer, err := crypto.SigToPub(batchHash, signatureData)
+	signerKey, err := crypto.SigToPub(batchHash, signatureData)
 	if err != nil {
 		return nil, err
 	}
-	if crypto.PubkeyToAddress(*signer) != batcherAddress {
-		return nil, errors.New("invalid signer")
-	}
+	signer := crypto.PubkeyToAddress(*signerKey)
 
 	var batch EspressoBatch
 	if err := rlp.DecodeBytes(batchData, &batch); err != nil {
 		return nil, err
 	}
-
+	batch.SignerAddress = signer
 	return &batch, nil
 }
 

@@ -15,6 +15,7 @@
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             go
+            go-ethereum
             just
             golangci-lint
           ];
