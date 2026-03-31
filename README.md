@@ -7,6 +7,7 @@ Go library for streaming batches from [Espresso](https://github.com/EspressoSyst
 - [Go](https://go.dev/) 1.25+
 - [just](https://just.systems/)
 - [golangci-lint](https://golangci-lint.run/)
+- [abigen](https://geth.ethereum.org/docs/tools/abigen) (for generating Go bindings)
 
 Or with Nix:
 
@@ -29,6 +30,7 @@ import "github.com/EspressoSystems/espresso-streamers/op"
 | `just lint` | Run `golangci-lint` |
 | `just fmt` | Format code |
 | `just check` | Run all of the above |
+| `just gen-bindings` | Regenerate Go bindings from ABI |
 
 ### Running tests
 

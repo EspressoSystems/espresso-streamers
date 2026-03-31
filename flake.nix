@@ -15,11 +15,13 @@
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             go
+            go-ethereum
             just
             golangci-lint
           ];
 
           shellHook = ''
+            export GOROOT="$(dirname $(dirname $(which go)))/share/go"
             echo "espresso-streamers dev shell"
             echo "  just test  — run tests"
             echo "  just check — fmt-check, vet, lint, test"

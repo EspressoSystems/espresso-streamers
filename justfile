@@ -18,4 +18,7 @@ test:
 vet:
     go vet ./...
 
+gen-bindings:
+    ./scripts/gen_bindings.sh abi/BatchAuthenticator.json > op/bindings/batch_authenticator.go
+
 check: fmt-check vet lint test
