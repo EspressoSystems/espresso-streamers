@@ -13,6 +13,7 @@ import (
 
 	espressoClient "github.com/EspressoSystems/espresso-network/sdks/go/client"
 	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
+	"github.com/EspressoSystems/espresso-streamers/op/derivation"
 	"github.com/ethereum-optimism/optimism/espresso"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
@@ -40,7 +41,7 @@ func TestNewEspressoStreamer(t *testing.T) {
 		1,
 		mock,
 		mock,
-		mock, mock, new(NoOpLogger), CreateEspressoBatchUnmarshaler(),
+		mock, mock, new(NoOpLogger), derivation.CreateEspressoBatchUnmarshaler(),
 		0,
 		1,
 		batchAuthAddr,
@@ -421,7 +422,7 @@ var batchAuthenticatorAddr = common.HexToAddress("0x0000000000000000000000000000
 // setupStreamerTesting initializes a MockStreamerSource and an EspressoStreamer
 // for testing purposes. It sets up the initial state of the MockStreamerSource
 // and returns both the MockStreamerSource and the EspressoStreamer.
-func setupStreamerTesting(namespace uint64, batcherAddress common.Address) (*MockStreamerSource, *BatchStreamer[EspressoBatch]) {
+func setupStreamerTesting(namespace uint64, batcherAddress common.Address) (*MockStreamerSource, *BatchStreamer[derivation.EspressoBatch]) {
 	state := NewMockStreamerSource()
 	state.TeeBatcherAddr = batcherAddress
 
@@ -433,7 +434,7 @@ func setupStreamerTesting(namespace uint64, batcherAddress common.Address) (*Moc
 		state,
 		state,
 		logger,
-		CreateEspressoBatchUnmarshaler(),
+		derivation.CreateEspressoBatchUnmarshaler(),
 		0,
 		1,
 		batchAuthenticatorAddr,
@@ -447,8 +448,8 @@ func setupStreamerTesting(namespace uint64, batcherAddress common.Address) (*Moc
 
 // createEspressoBatch creates a mock EspressoBatch for testing purposes
 // containing the provided SingularBatch.
-func createEspressoBatch(batch *derive.SingularBatch) *EspressoBatch {
-	return &EspressoBatch{
+func createEspressoBatch(batch *derive.SingularBatch) *derivation.EspressoBatch {
+	return &derivation.EspressoBatch{
 		BatchHeader: &geth_types.Header{
 			ParentHash: batch.ParentHash,
 			Number:     big.NewInt(int64(batch.Timestamp)),
@@ -460,7 +461,7 @@ func createEspressoBatch(batch *derive.SingularBatch) *EspressoBatch {
 
 // createEspressoTransaction creates a mock Espresso transaction for testing purposes
 // containing the provided Espresso batch.
-func createEspressoTransaction(ctx context.Context, batch *EspressoBatch, namespace uint64, chainSigner crypto.ChainSigner) *espressoCommon.Transaction {
+func createEspressoTransaction(ctx context.Context, batch *derivation.EspressoBatch, namespace uint64, chainSigner crypto.ChainSigner) *espressoCommon.Transaction {
 	tx, err := batch.ToEspressoTransaction(ctx, namespace, chainSigner)
 	if have, want := err, error(nil); have != want {
 		panic(err)
@@ -489,7 +490,7 @@ func (m *MockStreamerSource) CreateEspressoTxnData(
 	chainID *big.Int,
 	l2Height uint64,
 	chainSigner crypto.ChainSigner,
-) (*derive.SingularBatch, *EspressoBatch, *espressoCommon.Transaction, espressoClient.TransactionsInBlock) {
+) (*derive.SingularBatch, *derivation.EspressoBatch, *espressoCommon.Transaction, espressoClient.TransactionsInBlock) {
 	return m.CreateEspressoTxnDataWithL1Origin(ctx, namespace, rng, chainID, l2Height, chainSigner, m.FinalizedL1.Number, m.FinalizedL1.Hash)
 }
 
@@ -516,7 +517,7 @@ func TestStreamerSmoke(t *testing.T) {
 	}
 
 	// We should not get any batches from the Streamer at this point.
-	if have, want := streamer.Next(ctx), (*EspressoBatch)(nil); have != want {
+	if have, want := streamer.Next(ctx), (*derivation.EspressoBatch)(nil); have != want {
 		t.Fatalf("failed to get next batch from streamer:\nhave:\n\t%v\nwant:\n\t%v\n", have, want)
 	}
 }
@@ -842,7 +843,7 @@ func (m *MockStreamerSource) CreateEspressoTxnDataWithL1Origin(
 	chainSigner crypto.ChainSigner,
 	epochNum uint64,
 	epochHash common.Hash,
-) (*derive.SingularBatch, *EspressoBatch, *espressoCommon.Transaction, espressoClient.TransactionsInBlock) {
+) (*derive.SingularBatch, *derivation.EspressoBatch, *espressoCommon.Transaction, espressoClient.TransactionsInBlock) {
 	txCount := rng.Intn(10)
 	batch := m.createSingularBatch(rng, txCount, chainID, l2Height, epochNum, epochHash)
 	espBatch := createEspressoBatch(batch)
@@ -1077,7 +1078,7 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 			state,
 			state,
 			logger,
-			CreateEspressoBatchUnmarshaler(),
+			derivation.CreateEspressoBatchUnmarshaler(),
 			0,
 			0, // originBatchPos=0, so BatchPos starts at 1
 			batchAuthenticatorAddr,
@@ -1156,7 +1157,7 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 			state,
 			state,
 			logger,
-			CreateEspressoBatchUnmarshaler(),
+			derivation.CreateEspressoBatchUnmarshaler(),
 			0,
 			0, // originBatchPos=0, so BatchPos starts at 1
 			batchAuthenticatorAddr,
