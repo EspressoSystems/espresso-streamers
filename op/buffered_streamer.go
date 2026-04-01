@@ -84,12 +84,18 @@ func (b *BufferedEspressoStreamer[B]) handleL2PositionUpdate(nextPosition uint64
 
 		positionAdjustment := nextPosition - b.startingBatchPos
 		if positionAdjustment <= uint64(len(b.batches)) {
-			// If the adjustment is within the bounds of the current buffer,
-			// we can simply adjust the read position and starting batch position.
+			// Nil out pointers to allow garbage collection
+			for i := 0; i < int(positionAdjustment); i++ {
+				b.batches[i] = nil
+			}
 			b.batches = b.batches[positionAdjustment:]
-			b.readPos -= positionAdjustment
+			if b.readPos >= positionAdjustment {
+				b.readPos -= positionAdjustment
+			} else {
+				b.readPos = 0
+			}
 		} else {
-			b.batches = make([]*B, 0)
+			b.batches = nil
 			b.readPos = 0
 		}
 		b.startingBatchPos = nextPosition
@@ -158,25 +164,21 @@ func (b *BufferedEspressoStreamer[B]) Next(ctx context.Context) *B {
 		return batch
 	}
 
-	// If we don't have a batch in the buffer, fetch the next one from the streamer
-	batch := b.streamer.Next(ctx)
+	for {
+		// If we don't have a batch in the buffer, fetch the next one from the streamer
+		batch := b.streamer.Next(ctx)
 
-	// No more batches available at the moment
-	if batch == nil {
-		return nil
+		// No more batches available at the moment
+		if batch == nil {
+			return nil
+		}
+
+		if (*batch).Number() >= b.startingBatchPos {
+			b.batches = append(b.batches, batch)
+			b.readPos++
+			return batch
+		}
 	}
-
-	number := (*batch).Number()
-	if number < b.startingBatchPos {
-		// If the batch number is before the starting batch position, we ignore
-		// it, and want to fetch the next one
-		return b.Next(ctx)
-	}
-
-	b.batches = append(b.batches, batch)
-	b.readPos++
-	return batch
-
 }
 
 func (b *BufferedEspressoStreamer[B]) GetFallbackHotshotPos() uint64 {
@@ -184,21 +186,20 @@ func (b *BufferedEspressoStreamer[B]) GetFallbackHotshotPos() uint64 {
 }
 
 func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context) *B {
-	if b.HasNext(ctx) {
+	if b.readPos < uint64(len(b.batches)) {
 		return b.batches[b.readPos]
 	}
-	batch := b.streamer.Peek(ctx)
-	if batch == nil {
-		return nil
-	}
-	number := (*batch).Number()
-	if number < b.startingBatchPos {
-		// If the batch number is before the starting batch position, we ignore
-		// it, and want to fetch the next one
+	for {
+		batch := b.streamer.Peek(ctx)
+		if batch == nil {
+			return nil
+		}
+		if (*batch).Number() >= b.startingBatchPos {
+			return batch
+		}
+		// Discard the old batch and try again
 		b.streamer.Next(ctx)
-		return b.Peek(ctx)
 	}
-	return batch
 }
 
 // UnmarshalBatch implements EspressoStreamerIFace
