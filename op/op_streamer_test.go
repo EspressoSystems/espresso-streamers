@@ -14,6 +14,7 @@ import (
 	espressoClient "github.com/EspressoSystems/espresso-network/sdks/go/client"
 	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
 	"github.com/EspressoSystems/espresso-streamers/op/derivation"
+	"github.com/ethereum-optimism/optimism/espresso"
 	"github.com/ethereum-optimism/optimism/op-node/rollup"
 	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
 	"github.com/ethereum-optimism/optimism/op-service/crypto"
@@ -1093,7 +1094,7 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 		// Place enough batches to fill the buffer and overflow by one full
 		// fetch range. Batch 1 is intentionally missing so HasNext stays
 		// false, forcing the Update loop to keep iterating across ranges.
-		totalBatches := int(BatchBufferCapacity) + int(HOTSHOT_BLOCK_FETCH_LIMIT)
+		totalBatches := int(espresso.BatchBufferCapacity) + int(espresso.HOTSHOT_BLOCK_FETCH_LIMIT)
 		for i := 0; i < totalBatches; i++ {
 			_, _, _, espTxn := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, uint64(i+2), chainSigner)
 			state.AddEspressoTransactionData(uint64(i), namespace, espTxn)
