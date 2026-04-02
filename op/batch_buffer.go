@@ -64,17 +64,20 @@ func (b *BatchBuffer[B]) Insert(batch B) error {
 	}
 
 	pos, alreadyExists := slices.BinarySearchFunc(b.batches, batch, func(a, t B) int {
-		// Note: we use a custom comparison function that returns 0 only if the batches are actually
-		// the same to ensure that newer batches with the same number are stored later in the buffer
+		if a.Number() < t.Number() {
+			return -1
+		}
+		if a.Number() > t.Number() {
+			return 1
+		}
 		if a.Hash() == t.Hash() {
 			return 0
 		}
-
-		if a.Number() > t.Number() {
-			return 1
-		} else {
-			return -1
-		}
+		// Same number, different hash: treat the existing batch as less than the new one,
+		// so the new batch is inserted after all existing same-number batches. Since batches
+		// are read from Espresso in commit order, this ensures Peek() always returns the
+		// earliest-committed batch for a given number.
+		return -1
 	})
 
 	if alreadyExists {
