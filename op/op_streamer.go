@@ -220,6 +220,13 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 // block and the safe L1 origin.
 func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidity {
 
+	// Check cheaply whether this batch has already been buffered or finalized before
+	// making any L1 RPC calls.
+	if batch.Number() < s.nextBatchPos {
+		s.Log.Warn("Batch is older than current batchPos, skipping", "batchNr", batch.Number(), "batchPos", s.nextBatchPos)
+		return BatchPast
+	}
+
 	// Make sure the finalized L1 block is initialized before checking the block number.
 	if s.FinalizedL1 == (eth.L1BlockRef{}) {
 		s.Log.Error("Finalized L1 block not initialized")
@@ -265,12 +272,6 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 		s.Log.Warn("Dropping batch with invalid L1 origin hash")
 		return BatchDrop
 	}
-	// Batch already buffered/finalized
-	if batch.Number() < s.nextBatchPos {
-		s.Log.Warn("Batch is older than current batchPos, skipping", "batchNr", batch.Number(), "batchPos", s.nextBatchPos)
-		return BatchPast
-	}
-
 	return BatchAccept
 }
 
