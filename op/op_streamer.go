@@ -223,7 +223,7 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 	// Check cheaply whether this batch has already been buffered or finalized before
 	// making any L1 RPC calls.
 	if batch.Number() < s.nextBatchPos {
-		s.Log.Warn("Batch is older than current batchPos, skipping", "batchNr", batch.Number(), "batchPos", s.nextBatchPos)
+		s.Log.Warn("Batch is older than next expected batch, skipping", "batchNr", batch.Number(), "nextBatchPos", s.nextBatchPos)
 		return BatchPast
 	}
 
