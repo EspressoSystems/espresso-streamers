@@ -466,11 +466,12 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 			"parentHash", header.ParentHash,
 			"epochNum", header.Number,
 			"timestamp", header.Time)
+		// BatchBuffer.Insert returns only ErrDuplicateBatch or ErrAtCapacity; the two
+		// branches below are therefore exhaustive and falling through to return nil is correct.
 		err := s.BatchBuffer.Insert(*batch)
 		if errors.Is(err, ErrDuplicateBatch) {
 			s.Log.Warn("Dropping batch with duplicate hash")
-		}
-		if errors.Is(err, ErrAtCapacity) {
+		} else if errors.Is(err, ErrAtCapacity) {
 			return err
 		}
 	}
