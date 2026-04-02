@@ -95,7 +95,7 @@ type BatchStreamer[B Batch] struct {
 	HotShotPollingInterval   time.Duration
 
 	// Batch number we're to give out next
-	BatchPos uint64
+	nextBatchPos uint64
 	// Position of the last safe batch, we can use it as the position to fallback when resetting
 	fallbackBatchPos uint64
 	// HotShot block that was visited last
@@ -159,7 +159,7 @@ func NewEspressoStreamer[B Batch](
 		Log:                      log,
 		Namespace:                namespace,
 		// Internally, BatchPos is the position of the batch we are to give out next, hence the +1
-		BatchPos: originBatchPos + 1,
+		nextBatchPos: originBatchPos + 1,
 		// fallbackBatchPos represents the last safe batch, so no +1
 		fallbackBatchPos:      originBatchPos,
 		BatchBuffer:           NewBatchBuffer[B](BatchBufferCapacity),
@@ -176,7 +176,7 @@ func NewEspressoStreamer[B Batch](
 func (s *BatchStreamer[B]) Reset() {
 	s.Log.Info("reset espresso streamer", "hotshot pos", s.fallbackHotShotPos, "batch pos", s.fallbackBatchPos)
 	s.hotShotPos = s.fallbackHotShotPos
-	s.BatchPos = s.fallbackBatchPos + 1
+	s.nextBatchPos = s.fallbackBatchPos + 1
 	s.headBatch = nil
 	s.skipPos = math.MaxUint64
 	s.BatchBuffer.Clear()
@@ -266,8 +266,8 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 		return BatchDrop
 	}
 	// Batch already buffered/finalized
-	if batch.Number() < s.BatchPos {
-		s.Log.Warn("Batch is older than current batchPos, skipping", "batchNr", batch.Number(), "batchPos", s.BatchPos)
+	if batch.Number() < s.nextBatchPos {
+		s.Log.Warn("Batch is older than current batchPos, skipping", "batchNr", batch.Number(), "batchPos", s.nextBatchPos)
 		return BatchPast
 	}
 
@@ -451,7 +451,7 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 
 	// If this is the batch we're supposed to give out next and we don't
 	// have any other candidates, put it in as the head batch
-	if (*batch).Number() == s.BatchPos && s.headBatch == nil {
+	if (*batch).Number() == s.nextBatchPos && s.headBatch == nil {
 		s.Log.Info("Setting batch as the head batch",
 			"hash", (*batch).Hash(),
 			"parentHash", header.ParentHash,
@@ -483,7 +483,7 @@ func (s *BatchStreamer[B]) Next(ctx context.Context) *B {
 	// Is the next batch available?
 	if s.HasNext(ctx) {
 		// Current batch is going to be processed, update fallback batch position
-		s.BatchPos += 1
+		s.nextBatchPos += 1
 		head := s.headBatch
 		s.headBatch = nil
 		// If we have been skipping batches, now is the time
@@ -503,7 +503,7 @@ func (s *BatchStreamer[B]) HasNext(ctx context.Context) bool {
 	for {
 		if s.headBatch == nil {
 			nextBuffered := s.BatchBuffer.Peek()
-			if nextBuffered != nil && (*nextBuffered).Number() == s.BatchPos {
+			if nextBuffered != nil && (*nextBuffered).Number() == s.nextBatchPos {
 				s.headBatch = nextBuffered
 				s.BatchBuffer.Pop()
 			} else {
