@@ -484,7 +484,7 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 func (s *BatchStreamer[B]) Next(ctx context.Context) *B {
 	// Is the next batch available?
 	if s.HasNext(ctx) {
-		// Current batch is going to be processed, update fallback batch position
+		// Current batch is going to be processed, advance the next expected batch position
 		s.nextBatchPos += 1
 		head := s.headBatch
 		s.headBatch = nil
