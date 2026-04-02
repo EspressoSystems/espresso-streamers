@@ -74,10 +74,12 @@ type MockStreamer[B espresso.Batch] struct {
 	createBatch         func(number uint64, l1Origin eth.BlockID) *B
 	// unmarshalBatch      func(b []byte) (*B, error)
 
-	position uint64
+	position           uint64
+	fallbackHotshotPos uint64
 }
 
 var _ espresso.EspressoStreamer[espresso.Batch] = (*MockStreamer[espresso.Batch])(nil)
+var _ op.EspressoStreamer[BatchMock] = (*MockStreamer[BatchMock])(nil)
 
 // Update implements espresso.EspressoStreamer
 func (m *MockStreamer[B]) Update(ctx context.Context) error {
@@ -127,6 +129,17 @@ func (m *MockStreamer[B]) Next(ctx context.Context) *B {
 	batch := m.createBatch(m.position, m.currentSafeL1Origin)
 
 	return batch
+}
+
+// Peek implements espresso.EspressoStreamer
+func (m *MockStreamer[B]) Peek(ctx context.Context) *B {
+	batch := m.createBatch(m.position+1, m.currentSafeL1Origin)
+	return batch
+}
+
+// GetFallbackHotshotPos implements espresso.EspressoStreamer
+func (m *MockStreamer[B]) GetFallbackHotshotPos() uint64 {
+	return m.fallbackHotshotPos
 }
 
 // TestMockStreamerBasicFunctionality tests the basic functionality of the
@@ -245,4 +258,89 @@ func TestBufferedStreamerReOrgBehavior(t *testing.T) {
 	require.Equal(t, uint(1), mockStreamer.resetCallCount)
 
 	require.Equal(t, uint64(1), streamer.Next(ctx).Number())
+}
+
+// TestBufferedStreamerPeek tests the Peek method of the BufferedEspressoStreamer.
+func TestBufferedStreamerPeek(t *testing.T) {
+	t.Run("returns batch from buffer without consuming", func(t *testing.T) {
+		ctx := context.Background()
+		mockStreamer := &MockStreamer[BatchMock]{
+			createBatch: createBatchMock,
+		}
+		streamer := op.NewBufferedEspressoStreamer(mockStreamer)
+
+		require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
+
+		for i := uint64(1); i <= 5; i++ {
+			batch := streamer.Next(ctx)
+			require.Equal(t, i, batch.Number())
+		}
+
+		streamer.Reset()
+
+		peeked := streamer.Peek(ctx)
+		require.NotNil(t, peeked)
+		require.Equal(t, uint64(1), (*peeked).Number())
+
+		peekedAgain := streamer.Peek(ctx)
+		require.NotNil(t, peekedAgain)
+		require.Equal(t, (*peeked).Number(), (*peekedAgain).Number())
+
+		consumed := streamer.Next(ctx)
+		require.NotNil(t, consumed)
+		require.Equal(t, (*peeked).Number(), (*consumed).Number())
+
+		nextPeeked := streamer.Peek(ctx)
+		require.NotNil(t, nextPeeked)
+		require.Equal(t, uint64(2), (*nextPeeked).Number())
+	})
+
+	t.Run("delegates to underlying streamer when buffer is empty", func(t *testing.T) {
+		ctx := context.Background()
+		mockStreamer := &MockStreamer[BatchMock]{
+			createBatch: createBatchMock,
+		}
+		streamer := op.NewBufferedEspressoStreamer(mockStreamer)
+
+		require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
+
+		peeked := streamer.Peek(ctx)
+		require.NotNil(t, peeked)
+		require.Equal(t, uint64(1), (*peeked).Number())
+
+		peekedAgain := streamer.Peek(ctx)
+		require.NotNil(t, peekedAgain)
+		require.Equal(t, (*peeked).Number(), (*peekedAgain).Number())
+	})
+
+	t.Run("skips batches before starting position", func(t *testing.T) {
+		ctx := context.Background()
+		mockStreamer := &MockStreamer[BatchMock]{
+			createBatch: createBatchMock,
+		}
+		streamer := op.NewBufferedEspressoStreamer(mockStreamer)
+
+		require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 5, eth.BlockID{Number: 10}))
+
+		peeked := streamer.Peek(ctx)
+		require.NotNil(t, peeked)
+		require.Equal(t, uint64(5), (*peeked).Number())
+	})
+}
+
+// TestBufferedStreamerGetFallbackHotshotPos tests that GetFallbackHotshotPos delegates to the underlying streamer.
+func TestBufferedStreamerGetFallbackHotshotPos(t *testing.T) {
+	ctx := context.Background()
+	mockStreamer := &MockStreamer[BatchMock]{
+		createBatch:        createBatchMock,
+		fallbackHotshotPos: 42,
+	}
+	streamer := op.NewBufferedEspressoStreamer(mockStreamer)
+
+	require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
+
+	require.Equal(t, uint64(42), streamer.GetFallbackHotshotPos())
+
+	mockStreamer.fallbackHotshotPos = 100
+	require.Equal(t, uint64(100), streamer.GetFallbackHotshotPos())
 }
