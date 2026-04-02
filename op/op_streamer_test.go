@@ -49,6 +49,32 @@ func TestNewEspressoStreamer(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestResetAfterNewDoesNotSkipBatch verifies that calling Reset immediately
+// after New leaves BatchPos at originBatchPos+1, not originBatchPos+2.
+// Regression test for the bug where fallbackBatchPos was initialized to
+// originBatchPos+1, causing Reset to advance BatchPos by an extra step.
+func TestResetAfterNewDoesNotSkipBatch(t *testing.T) {
+	mock := NewMockStreamerSource()
+	batchAuthAddr := common.HexToAddress("0x0000000000000000000000000000000000000001")
+	mock.TeeBatcherAddr = batchAuthAddr
+
+	const originBatchPos = uint64(5)
+	streamer, err := NewEspressoStreamer(
+		1,
+		mock,
+		mock,
+		mock, mock, new(NoOpLogger), derivation.CreateEspressoBatchUnmarshaler(),
+		0,
+		originBatchPos,
+		batchAuthAddr,
+	)
+	require.NoError(t, err)
+	require.Equal(t, originBatchPos+1, streamer.BatchPos, "BatchPos should be originBatchPos+1 after New")
+
+	streamer.Reset()
+	require.Equal(t, originBatchPos+1, streamer.BatchPos, "BatchPos should still be originBatchPos+1 after Reset, not originBatchPos+2")
+}
+
 // EspBlockAndNamespace is a struct that holds the height and namespace
 // of an Espresso block. It is used to uniquely identify a block in the
 // EspressoStreamer.
@@ -1067,28 +1093,12 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		state := NewMockStreamerSource()
-		state.TeeBatcherAddr = signerAddress
-		logger := new(NoOpLogger)
-
-		streamer, err := NewEspressoStreamer(
-			namespace,
-			state,
-			state,
-			state,
-			state,
-			logger,
-			derivation.CreateEspressoBatchUnmarshaler(),
-			0,
-			0, // originBatchPos=0, so BatchPos starts at 1
-			batchAuthenticatorAddr,
-		)
-		require.NoError(t, err)
+		state, streamer := setupStreamerTesting(namespace, signerAddress)
 
 		rng := rand.New(rand.NewSource(99))
 
 		syncStatus := state.SyncStatus()
-		err = streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
 		require.NoError(t, err)
 
 		// Place enough batches to fill the buffer and overflow by one full
@@ -1145,30 +1155,12 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		state := NewMockStreamerSource()
-		state.TeeBatcherAddr = signerAddress
-		logger := new(NoOpLogger)
-
-		// Create streamer - after Refresh with SafeL2.Number=0, BatchPos becomes 1
-		streamer, err := NewEspressoStreamer(
-			namespace,
-			state,
-			state,
-			state,
-			state,
-			logger,
-			derivation.CreateEspressoBatchUnmarshaler(),
-			0,
-			0, // originBatchPos=0, so BatchPos starts at 1
-			batchAuthenticatorAddr,
-		)
-		require.NoError(t, err)
+		state, streamer := setupStreamerTesting(namespace, signerAddress)
 
 		rng := rand.New(rand.NewSource(7))
 
-		// Refresh state - after this, BatchPos becomes 1
 		syncStatus := state.SyncStatus()
-		err = streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
 		require.NoError(t, err)
 
 		// Fill buffer with future batches (2, 3, 4, ...)
@@ -1198,6 +1190,63 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 		batch := streamer.Next(ctx)
 		require.NotNil(t, batch)
 		require.Equal(t, uint64(1), batch.Number())
+	})
+
+	t.Run("rewind rescans the first block of the range where overflow began", func(t *testing.T) {
+		// Regression: skipPos must record blockPos-1 so the rewind re-fetches the
+		// batch dropped at the very first block of the overflow range.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		state, streamer := setupStreamerTesting(namespace, signerAddress)
+
+		rng := rand.New(rand.NewSource(42))
+
+		syncStatus := state.SyncStatus()
+		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		require.NoError(t, err)
+
+		// Fill the buffer to exactly BatchBufferCapacity. LatestEspHeight ends at
+		// BatchBufferCapacity-1 so the first Update() stops there with skipPos unset.
+		for i := range uint64(BatchBufferCapacity) {
+			_, _, _, espTxn := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, i+2, chainSigner)
+			state.AddEspressoTransactionData(i, namespace, espTxn)
+		}
+		err = streamer.Update(ctx)
+		require.NoError(t, err)
+		require.False(t, streamer.HasNext(ctx))
+
+		// Place the overflow batch at block BatchBufferCapacity — the first block of
+		// the next range. Batch 1 is placed far away so the second Update() hits the
+		// overflow block before finding it.
+		const overflowBatchNum = uint64(BatchBufferCapacity + 2)
+		_, _, _, overflowTxn := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, overflowBatchNum, chainSigner)
+		state.AddEspressoTransactionData(BatchBufferCapacity, namespace, overflowTxn)
+		_, _, _, batch1Txn := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, 1, chainSigner)
+		state.AddEspressoTransactionData(BatchBufferCapacity+500, namespace, batch1Txn)
+
+		// Second Update: buffer is full so the overflow batch is dropped at block
+		// BatchBufferCapacity (the exact range start). Batch 1 is found further along.
+		err = streamer.Update(ctx)
+		require.NoError(t, err)
+
+		// Consume batch 1 — triggers the rewind to re-scan from BatchBufferCapacity.
+		require.True(t, streamer.HasNext(ctx))
+		b := streamer.Next(ctx)
+		require.Equal(t, uint64(1), b.Number())
+
+		// Drain buffered batches 2..BatchBufferCapacity+1 to advance BatchPos to overflowBatchNum.
+		for streamer.HasNext(ctx) {
+			streamer.Next(ctx)
+		}
+
+		// The rewind must re-scan from BatchBufferCapacity. Without the fix the scan
+		// starts from BatchBufferCapacity+1, permanently losing the overflow batch.
+		err = streamer.Update(ctx)
+		require.NoError(t, err)
+		require.True(t, streamer.HasNext(ctx), "overflow batch must be recoverable after rewind")
+		b = streamer.Next(ctx)
+		require.Equal(t, overflowBatchNum, b.Number())
 	})
 }
 
