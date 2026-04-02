@@ -373,7 +373,7 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 }
 
 // fetchHotShotRange is a helper method that will load all of the blocks from
-// Hotshot from start to finish, inclusive. It will process each block and
+// Hotshot from start (inclusive) to finish (exclusive). It will process each block and
 // update the batch buffer with any batches found in the block.
 // It will also update the hotShotPos to the last block processed, in order
 // to effectively keep track of the last block we have successfully fetched,
