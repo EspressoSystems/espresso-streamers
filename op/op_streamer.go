@@ -176,7 +176,6 @@ func NewEspressoStreamer[B Batch](
 func (s *BatchStreamer[B]) Reset() {
 	s.Log.Info("reset espresso streamer", "hotshot pos", s.fallbackHotShotPos, "batch pos", s.fallbackBatchPos)
 	s.hotShotPos = s.fallbackHotShotPos
-	s.BatchPos = s.fallbackBatchPos + 1
 	s.headBatch = nil
 	s.skipPos = math.MaxUint64
 	s.BatchBuffer.Clear()
@@ -210,6 +209,7 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 	shouldReset = shouldReset || (s.fallbackHotShotPos > s.hotShotPos)
 
 	s.fallbackBatchPos = safeBatchNumber
+	s.BatchPos = s.fallbackBatchPos + 1
 	if shouldReset {
 		s.Reset()
 	}
