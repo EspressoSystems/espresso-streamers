@@ -210,11 +210,11 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 	shouldReset = shouldReset || (s.fallbackHotShotPos > s.hotShotPos)
 
 	s.fallbackBatchPos = safeBatchNumber
-	// If BatchPos is behind the safe batch Pos,
-	// we increment the batch pos. This generally means that safe batch number
-	// was updated by another batcher (could be a non tee batcher)
-	if s.BatchPos < s.fallbackBatchPos {
-		s.BatchPos = s.fallbackBatchPos + 1
+
+	// If BatchPos is lagging behind the safe batch Pos, we trigger a reset.
+	// This generally means that safe batch number was updated by another batcher
+	if s.BatchPos <= s.fallbackBatchPos {
+		shouldReset = true
 	}
 
 	if shouldReset {
