@@ -572,7 +572,7 @@ func (s *BatchStreamer[B]) confirmEspressoBlockHeight(safeL1Origin eth.BlockID) 
 	// position to this height, or we risk dipping below
 	// hotshot origin on reset.
 	if hotshotState.BlockHeight <= s.originHotShotPos {
-		s.Log.Info("HotShot height at L1 Origin less than HotShot origin of the streamer, ignoring")
+		s.Log.Debug("HotShot height at L1 Origin less than HotShot origin of the streamer, ignoring")
 		return shouldReset
 	}
 
