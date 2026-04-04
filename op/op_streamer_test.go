@@ -1365,6 +1365,120 @@ func TestStreamerBatchOrderingDeterminism(t *testing.T) {
 	})
 }
 
+// TestRefreshResetsWhenBatchPosLagsBehindSafeBatch verifies that Refresh triggers a
+// reset when BatchPos is at or behind the safe batch number (fallbackBatchPos).
+// This covers the scenario where another batcher (e.g. a non-tee batcher) has
+// advanced the safe batch number beyond our streamer's current position, so the
+// streamer must jump ahead to safe+1.
+func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
+	namespace := uint64(42)
+	batchAuthAddr := common.HexToAddress("0x0000000000000000000000000000000000000001")
+
+	t.Run("resets when BatchPos < safe batch number", func(t *testing.T) {
+		ctx := context.Background()
+
+		state := NewMockStreamerSource()
+		state.TeeBatcherAddr = batchAuthAddr
+
+		// originBatchPos=1 → BatchPos=2, fallbackBatchPos=1
+		streamer, err := NewEspressoStreamer(
+			namespace,
+			state,
+			state,
+			state,
+			state,
+			new(NoOpLogger),
+			derivation.CreateEspressoBatchUnmarshaler(),
+			0,
+			1,
+			batchAuthAddr,
+		)
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), streamer.BatchPos)
+
+		// Simulate another batcher advancing safe batch to 10.
+		// safeBatchNumber(10) != fallbackBatchPos(1) → no early return.
+		// After fallbackBatchPos is updated to 10, BatchPos(2) <= 10 → reset.
+		safeBatchNumber := uint64(10)
+		err = streamer.Refresh(ctx, state.FinalizedL1, safeBatchNumber, state.SafeL2.L1Origin)
+		require.NoError(t, err)
+
+		// After reset: BatchPos = fallbackBatchPos + 1 = 11
+		require.Equal(t, safeBatchNumber+1, streamer.BatchPos,
+			"BatchPos should advance to safeBatchNumber+1 after reset")
+		require.Equal(t, safeBatchNumber, streamer.fallbackBatchPos)
+	})
+
+	t.Run("resets when BatchPos == safe batch number", func(t *testing.T) {
+		ctx := context.Background()
+
+		state := NewMockStreamerSource()
+		state.TeeBatcherAddr = batchAuthAddr
+
+		// originBatchPos=1,  BatchPos=2, fallbackBatchPos=1
+		streamer, err := NewEspressoStreamer(
+			namespace,
+			state,
+			state,
+			state,
+			state,
+			new(NoOpLogger),
+			derivation.CreateEspressoBatchUnmarshaler(),
+			0,
+			1,
+			batchAuthAddr,
+		)
+		require.NoError(t, err)
+		require.Equal(t, uint64(2), streamer.BatchPos)
+
+		// safeBatchNumber=2: equal to BatchPos.
+		// safeBatchNumber(2) != fallbackBatchPos(1) → no early return.
+		// After fallbackBatchPos is updated to 2, BatchPos(2) <= 2 → reset.
+		safeBatchNumber := uint64(2)
+		err = streamer.Refresh(ctx, state.FinalizedL1, safeBatchNumber, state.SafeL2.L1Origin)
+		require.NoError(t, err)
+
+		// After reset: BatchPos = fallbackBatchPos + 1 = 3
+		require.Equal(t, safeBatchNumber+1, streamer.BatchPos,
+			"BatchPos should advance to safeBatchNumber+1 after reset")
+		require.Equal(t, safeBatchNumber, streamer.fallbackBatchPos)
+	})
+
+	t.Run("no reset when BatchPos > safe batch number", func(t *testing.T) {
+		ctx := context.Background()
+
+		state := NewMockStreamerSource()
+		state.TeeBatcherAddr = batchAuthAddr
+
+		// originBatchPos=4 → BatchPos=5, fallbackBatchPos=4
+		streamer, err := NewEspressoStreamer(
+			namespace,
+			state,
+			state,
+			state,
+			state,
+			new(NoOpLogger),
+			derivation.CreateEspressoBatchUnmarshaler(),
+			0,
+			4,
+			batchAuthAddr,
+		)
+		require.NoError(t, err)
+		require.Equal(t, uint64(5), streamer.BatchPos)
+
+		streamer.BatchPos = 7
+
+		safeBatchNumber := uint64(5)
+		err = streamer.Refresh(ctx, state.FinalizedL1, safeBatchNumber, state.SafeL2.L1Origin)
+		require.NoError(t, err)
+
+		// No reset should happen
+		require.Equal(t, uint64(7), streamer.BatchPos,
+			"BatchPos should remain unchanged when it is ahead of safe batch number")
+		require.Equal(t, safeBatchNumber, streamer.fallbackBatchPos)
+	})
+}
+
 // TestPeek verifies that Peek returns the next batch without consuming it from the streamer.
 // Acceptance criteria:
 // - Peek returns a valid batch with the correct block number when batches are available.
