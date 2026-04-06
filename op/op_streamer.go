@@ -242,15 +242,15 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 			return BatchUndecided
 		}
 
-		teeBatcher, err := s.BatchAuthenticatorCaller.TeeBatcher(&bind.CallOpts{BlockNumber: blockNumber})
+		espressoBatcher, err := s.BatchAuthenticatorCaller.EspressoBatcher(&bind.CallOpts{BlockNumber: blockNumber})
 		if err != nil {
-			s.Log.Warn("Failed to fetch the TEE batcher address, pending resync", "error", err)
+			s.Log.Warn("Failed to fetch the espresso batcher address, pending resync", "error", err)
 			return BatchUndecided
 		}
 
 		state = l1State{
 			hash:        hash,
-			teeBatchers: []common.Address{teeBatcher},
+			teeBatchers: []common.Address{espressoBatcher},
 		}
 
 		s.finalizedL1StateCache.Add(origin.Number, state)

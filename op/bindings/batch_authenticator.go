@@ -31,7 +31,7 @@ var (
 
 // BatchAuthenticatorMetaData contains all meta data concerning the BatchAuthenticator contract.
 var BatchAuthenticatorMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"DEFAULT_ADMIN_ROLE\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"GUARDIAN_ROLE\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"acceptOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"activeIsTee\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"guardian\",\"type\":\"address\"}],\"name\":\"addGuardian\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"commitment\",\"type\":\"bytes32\"},{\"internalType\":\"bytes\",\"name\":\"_signature\",\"type\":\"bytes\"}],\"name\":\"authenticateBatchInfo\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"espressoTEEVerifier\",\"outputs\":[{\"internalType\":\"contractIEspressoTEEVerifier\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getGuardians\",\"outputs\":[{\"internalType\":\"address[]\",\"name\":\"\",\"type\":\"address[]\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"}],\"name\":\"getRoleAdmin\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"index\",\"type\":\"uint256\"}],\"name\":\"getRoleMember\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"}],\"name\":\"getRoleMemberCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"}],\"name\":\"getRoleMembers\",\"outputs\":[{\"internalType\":\"address[]\",\"name\":\"\",\"type\":\"address[]\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"grantRole\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"guardianCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"hasRole\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"initVersion\",\"outputs\":[{\"internalType\":\"uint8\",\"name\":\"\",\"type\":\"uint8\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"contractIEspressoTEEVerifier\",\"name\":\"_espressoTEEVerifier\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_teeBatcher\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_systemConfig\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_owner\",\"type\":\"address\"}],\"name\":\"initialize\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"isGuardian\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"nitroValidator\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"pendingOwner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"proxyAdmin\",\"outputs\":[{\"internalType\":\"contractIProxyAdmin\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"proxyAdminOwner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"attestationTbs\",\"type\":\"bytes\"},{\"internalType\":\"bytes\",\"name\":\"signature\",\"type\":\"bytes\"}],\"name\":\"registerSigner\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"guardian\",\"type\":\"address\"}],\"name\":\"removeGuardian\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"callerConfirmation\",\"type\":\"address\"}],\"name\":\"renounceRole\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"revokeRole\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_newTeeBatcher\",\"type\":\"address\"}],\"name\":\"setTeeBatcher\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes4\",\"name\":\"interfaceId\",\"type\":\"bytes4\"}],\"name\":\"supportsInterface\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"switchBatcher\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"systemConfig\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"teeBatcher\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"version\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"commitment\",\"type\":\"bytes32\"}],\"name\":\"BatchInfoAuthenticated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bool\",\"name\":\"activeIsTee\",\"type\":\"bool\"}],\"name\":\"BatcherSwitched\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"guardian\",\"type\":\"address\"}],\"name\":\"GuardianAdded\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"guardian\",\"type\":\"address\"}],\"name\":\"GuardianRemoved\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"version\",\"type\":\"uint64\"}],\"name\":\"Initialized\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferStarted\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"previousAdminRole\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"newAdminRole\",\"type\":\"bytes32\"}],\"name\":\"RoleAdminChanged\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"}],\"name\":\"RoleGranted\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"role\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"}],\"name\":\"RoleRevoked\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"caller\",\"type\":\"address\"}],\"name\":\"SignerRegistrationInitiated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"oldTeeBatcher\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newTeeBatcher\",\"type\":\"address\"}],\"name\":\"TeeBatcherUpdated\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"AccessControlBadConfirmation\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"},{\"internalType\":\"bytes32\",\"name\":\"neededRole\",\"type\":\"bytes32\"}],\"name\":\"AccessControlUnauthorizedAccount\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"contract_\",\"type\":\"address\"}],\"name\":\"InvalidAddress\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidGuardianAddress\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidInitialization\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"caller\",\"type\":\"address\"}],\"name\":\"NotGuardian\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"caller\",\"type\":\"address\"}],\"name\":\"NotGuardianOrOwner\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"NotInitializing\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"OwnableInvalidOwner\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"OwnableUnauthorizedAccount\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProxyAdminOwnedBase_NotProxyAdmin\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProxyAdminOwnedBase_NotProxyAdminOrProxyAdminOwner\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProxyAdminOwnedBase_NotProxyAdminOwner\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProxyAdminOwnedBase_NotResolvedDelegateProxy\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProxyAdminOwnedBase_NotSharedProxyAdminOwner\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProxyAdminOwnedBase_ProxyAdminNotFound\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ReinitializableBase_ZeroInitVersion\",\"type\":\"error\"}]",
+	ABI: "[{\"type\":\"constructor\",\"inputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"acceptOwnership\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"activeIsEspresso\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"addGuardian\",\"inputs\":[{\"name\":\"guardian\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"authenticateBatchInfo\",\"inputs\":[{\"name\":\"commitment\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"_signature\",\"type\":\"bytes\",\"internalType\":\"bytes\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"espressoBatcher\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"espressoTEEVerifier\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"contractIEspressoTEEVerifier\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getGuardians\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address[]\",\"internalType\":\"address[]\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"guardianCount\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"initVersion\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint8\",\"internalType\":\"uint8\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"initialize\",\"inputs\":[{\"name\":\"_espressoTEEVerifier\",\"type\":\"address\",\"internalType\":\"contractIEspressoTEEVerifier\"},{\"name\":\"_espressoBatcher\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"_systemConfig\",\"type\":\"address\",\"internalType\":\"contractISystemConfig\"},{\"name\":\"_owner\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"isGuardian\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"nitroValidator\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"owner\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"paused\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"pendingOwner\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"proxyAdmin\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"contractIProxyAdmin\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"proxyAdminOwner\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"registerSigner\",\"inputs\":[{\"name\":\"verificationData\",\"type\":\"bytes\",\"internalType\":\"bytes\"},{\"name\":\"data\",\"type\":\"bytes\",\"internalType\":\"bytes\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"removeGuardian\",\"inputs\":[{\"name\":\"guardian\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"renounceOwnership\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setEspressoBatcher\",\"inputs\":[{\"name\":\"_newEspressoBatcher\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"switchBatcher\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"systemConfig\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"contractISystemConfig\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"transferOwnership\",\"inputs\":[{\"name\":\"newOwner\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"version\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"string\",\"internalType\":\"string\"}],\"stateMutability\":\"view\"},{\"type\":\"event\",\"name\":\"BatchInfoAuthenticated\",\"inputs\":[{\"name\":\"commitment\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"BatcherSwitched\",\"inputs\":[{\"name\":\"activeIsEspresso\",\"type\":\"bool\",\"indexed\":true,\"internalType\":\"bool\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"EspressoBatcherUpdated\",\"inputs\":[{\"name\":\"oldEspressoBatcher\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newEspressoBatcher\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"GuardianAdded\",\"inputs\":[{\"name\":\"guardian\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"GuardianRemoved\",\"inputs\":[{\"name\":\"guardian\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Initialized\",\"inputs\":[{\"name\":\"version\",\"type\":\"uint64\",\"indexed\":false,\"internalType\":\"uint64\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OwnershipTransferStarted\",\"inputs\":[{\"name\":\"previousOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OwnershipTransferred\",\"inputs\":[{\"name\":\"previousOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"SignerRegistrationInitiated\",\"inputs\":[{\"name\":\"caller\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"error\",\"name\":\"BatchAuthenticator_Paused\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidAddress\",\"inputs\":[{\"name\":\"contract_\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"InvalidGuardianAddress\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidInitialization\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotGuardian\",\"inputs\":[{\"name\":\"caller\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"NotGuardianOrOwner\",\"inputs\":[{\"name\":\"caller\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"NotInitializing\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OwnableInvalidOwner\",\"inputs\":[{\"name\":\"owner\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"OwnableUnauthorizedAccount\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"OwnerCantBeGuardian\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ProxyAdminOwnedBase_NotProxyAdmin\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ProxyAdminOwnedBase_NotProxyAdminOrProxyAdminOwner\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ProxyAdminOwnedBase_NotProxyAdminOwner\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ProxyAdminOwnedBase_NotResolvedDelegateProxy\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ProxyAdminOwnedBase_NotSharedProxyAdminOwner\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ProxyAdminOwnedBase_ProxyAdminNotFound\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ReinitializableBase_ZeroInitVersion\",\"inputs\":[]}]",
 }
 
 // BatchAuthenticatorABI is the input ABI used to generate the binding from.
@@ -180,74 +180,12 @@ func (_BatchAuthenticator *BatchAuthenticatorTransactorRaw) Transact(opts *bind.
 	return _BatchAuthenticator.Contract.contract.Transact(opts, method, params...)
 }
 
-// DEFAULTADMINROLE is a free data retrieval call binding the contract method 0xa217fddf.
+// ActiveIsEspresso is a free data retrieval call binding the contract method 0xeca919df.
 //
-// Solidity: function DEFAULT_ADMIN_ROLE() view returns(bytes32)
-func (_BatchAuthenticator *BatchAuthenticatorCaller) DEFAULTADMINROLE(opts *bind.CallOpts) ([32]byte, error) {
+// Solidity: function activeIsEspresso() view returns(bool)
+func (_BatchAuthenticator *BatchAuthenticatorCaller) ActiveIsEspresso(opts *bind.CallOpts) (bool, error) {
 	var out []interface{}
-	err := _BatchAuthenticator.contract.Call(opts, &out, "DEFAULT_ADMIN_ROLE")
-
-	if err != nil {
-		return *new([32]byte), err
-	}
-
-	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
-
-	return out0, err
-
-}
-
-// DEFAULTADMINROLE is a free data retrieval call binding the contract method 0xa217fddf.
-//
-// Solidity: function DEFAULT_ADMIN_ROLE() view returns(bytes32)
-func (_BatchAuthenticator *BatchAuthenticatorSession) DEFAULTADMINROLE() ([32]byte, error) {
-	return _BatchAuthenticator.Contract.DEFAULTADMINROLE(&_BatchAuthenticator.CallOpts)
-}
-
-// DEFAULTADMINROLE is a free data retrieval call binding the contract method 0xa217fddf.
-//
-// Solidity: function DEFAULT_ADMIN_ROLE() view returns(bytes32)
-func (_BatchAuthenticator *BatchAuthenticatorCallerSession) DEFAULTADMINROLE() ([32]byte, error) {
-	return _BatchAuthenticator.Contract.DEFAULTADMINROLE(&_BatchAuthenticator.CallOpts)
-}
-
-// GUARDIANROLE is a free data retrieval call binding the contract method 0x24ea54f4.
-//
-// Solidity: function GUARDIAN_ROLE() view returns(bytes32)
-func (_BatchAuthenticator *BatchAuthenticatorCaller) GUARDIANROLE(opts *bind.CallOpts) ([32]byte, error) {
-	var out []interface{}
-	err := _BatchAuthenticator.contract.Call(opts, &out, "GUARDIAN_ROLE")
-
-	if err != nil {
-		return *new([32]byte), err
-	}
-
-	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
-
-	return out0, err
-
-}
-
-// GUARDIANROLE is a free data retrieval call binding the contract method 0x24ea54f4.
-//
-// Solidity: function GUARDIAN_ROLE() view returns(bytes32)
-func (_BatchAuthenticator *BatchAuthenticatorSession) GUARDIANROLE() ([32]byte, error) {
-	return _BatchAuthenticator.Contract.GUARDIANROLE(&_BatchAuthenticator.CallOpts)
-}
-
-// GUARDIANROLE is a free data retrieval call binding the contract method 0x24ea54f4.
-//
-// Solidity: function GUARDIAN_ROLE() view returns(bytes32)
-func (_BatchAuthenticator *BatchAuthenticatorCallerSession) GUARDIANROLE() ([32]byte, error) {
-	return _BatchAuthenticator.Contract.GUARDIANROLE(&_BatchAuthenticator.CallOpts)
-}
-
-// ActiveIsTee is a free data retrieval call binding the contract method 0x7877a9ed.
-//
-// Solidity: function activeIsTee() view returns(bool)
-func (_BatchAuthenticator *BatchAuthenticatorCaller) ActiveIsTee(opts *bind.CallOpts) (bool, error) {
-	var out []interface{}
-	err := _BatchAuthenticator.contract.Call(opts, &out, "activeIsTee")
+	err := _BatchAuthenticator.contract.Call(opts, &out, "activeIsEspresso")
 
 	if err != nil {
 		return *new(bool), err
@@ -259,18 +197,49 @@ func (_BatchAuthenticator *BatchAuthenticatorCaller) ActiveIsTee(opts *bind.Call
 
 }
 
-// ActiveIsTee is a free data retrieval call binding the contract method 0x7877a9ed.
+// ActiveIsEspresso is a free data retrieval call binding the contract method 0xeca919df.
 //
-// Solidity: function activeIsTee() view returns(bool)
-func (_BatchAuthenticator *BatchAuthenticatorSession) ActiveIsTee() (bool, error) {
-	return _BatchAuthenticator.Contract.ActiveIsTee(&_BatchAuthenticator.CallOpts)
+// Solidity: function activeIsEspresso() view returns(bool)
+func (_BatchAuthenticator *BatchAuthenticatorSession) ActiveIsEspresso() (bool, error) {
+	return _BatchAuthenticator.Contract.ActiveIsEspresso(&_BatchAuthenticator.CallOpts)
 }
 
-// ActiveIsTee is a free data retrieval call binding the contract method 0x7877a9ed.
+// ActiveIsEspresso is a free data retrieval call binding the contract method 0xeca919df.
 //
-// Solidity: function activeIsTee() view returns(bool)
-func (_BatchAuthenticator *BatchAuthenticatorCallerSession) ActiveIsTee() (bool, error) {
-	return _BatchAuthenticator.Contract.ActiveIsTee(&_BatchAuthenticator.CallOpts)
+// Solidity: function activeIsEspresso() view returns(bool)
+func (_BatchAuthenticator *BatchAuthenticatorCallerSession) ActiveIsEspresso() (bool, error) {
+	return _BatchAuthenticator.Contract.ActiveIsEspresso(&_BatchAuthenticator.CallOpts)
+}
+
+// EspressoBatcher is a free data retrieval call binding the contract method 0x88da3bb7.
+//
+// Solidity: function espressoBatcher() view returns(address)
+func (_BatchAuthenticator *BatchAuthenticatorCaller) EspressoBatcher(opts *bind.CallOpts) (common.Address, error) {
+	var out []interface{}
+	err := _BatchAuthenticator.contract.Call(opts, &out, "espressoBatcher")
+
+	if err != nil {
+		return *new(common.Address), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
+
+	return out0, err
+
+}
+
+// EspressoBatcher is a free data retrieval call binding the contract method 0x88da3bb7.
+//
+// Solidity: function espressoBatcher() view returns(address)
+func (_BatchAuthenticator *BatchAuthenticatorSession) EspressoBatcher() (common.Address, error) {
+	return _BatchAuthenticator.Contract.EspressoBatcher(&_BatchAuthenticator.CallOpts)
+}
+
+// EspressoBatcher is a free data retrieval call binding the contract method 0x88da3bb7.
+//
+// Solidity: function espressoBatcher() view returns(address)
+func (_BatchAuthenticator *BatchAuthenticatorCallerSession) EspressoBatcher() (common.Address, error) {
+	return _BatchAuthenticator.Contract.EspressoBatcher(&_BatchAuthenticator.CallOpts)
 }
 
 // EspressoTEEVerifier is a free data retrieval call binding the contract method 0xfa14fe6d.
@@ -335,130 +304,6 @@ func (_BatchAuthenticator *BatchAuthenticatorCallerSession) GetGuardians() ([]co
 	return _BatchAuthenticator.Contract.GetGuardians(&_BatchAuthenticator.CallOpts)
 }
 
-// GetRoleAdmin is a free data retrieval call binding the contract method 0x248a9ca3.
-//
-// Solidity: function getRoleAdmin(bytes32 role) view returns(bytes32)
-func (_BatchAuthenticator *BatchAuthenticatorCaller) GetRoleAdmin(opts *bind.CallOpts, role [32]byte) ([32]byte, error) {
-	var out []interface{}
-	err := _BatchAuthenticator.contract.Call(opts, &out, "getRoleAdmin", role)
-
-	if err != nil {
-		return *new([32]byte), err
-	}
-
-	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
-
-	return out0, err
-
-}
-
-// GetRoleAdmin is a free data retrieval call binding the contract method 0x248a9ca3.
-//
-// Solidity: function getRoleAdmin(bytes32 role) view returns(bytes32)
-func (_BatchAuthenticator *BatchAuthenticatorSession) GetRoleAdmin(role [32]byte) ([32]byte, error) {
-	return _BatchAuthenticator.Contract.GetRoleAdmin(&_BatchAuthenticator.CallOpts, role)
-}
-
-// GetRoleAdmin is a free data retrieval call binding the contract method 0x248a9ca3.
-//
-// Solidity: function getRoleAdmin(bytes32 role) view returns(bytes32)
-func (_BatchAuthenticator *BatchAuthenticatorCallerSession) GetRoleAdmin(role [32]byte) ([32]byte, error) {
-	return _BatchAuthenticator.Contract.GetRoleAdmin(&_BatchAuthenticator.CallOpts, role)
-}
-
-// GetRoleMember is a free data retrieval call binding the contract method 0x9010d07c.
-//
-// Solidity: function getRoleMember(bytes32 role, uint256 index) view returns(address)
-func (_BatchAuthenticator *BatchAuthenticatorCaller) GetRoleMember(opts *bind.CallOpts, role [32]byte, index *big.Int) (common.Address, error) {
-	var out []interface{}
-	err := _BatchAuthenticator.contract.Call(opts, &out, "getRoleMember", role, index)
-
-	if err != nil {
-		return *new(common.Address), err
-	}
-
-	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
-
-	return out0, err
-
-}
-
-// GetRoleMember is a free data retrieval call binding the contract method 0x9010d07c.
-//
-// Solidity: function getRoleMember(bytes32 role, uint256 index) view returns(address)
-func (_BatchAuthenticator *BatchAuthenticatorSession) GetRoleMember(role [32]byte, index *big.Int) (common.Address, error) {
-	return _BatchAuthenticator.Contract.GetRoleMember(&_BatchAuthenticator.CallOpts, role, index)
-}
-
-// GetRoleMember is a free data retrieval call binding the contract method 0x9010d07c.
-//
-// Solidity: function getRoleMember(bytes32 role, uint256 index) view returns(address)
-func (_BatchAuthenticator *BatchAuthenticatorCallerSession) GetRoleMember(role [32]byte, index *big.Int) (common.Address, error) {
-	return _BatchAuthenticator.Contract.GetRoleMember(&_BatchAuthenticator.CallOpts, role, index)
-}
-
-// GetRoleMemberCount is a free data retrieval call binding the contract method 0xca15c873.
-//
-// Solidity: function getRoleMemberCount(bytes32 role) view returns(uint256)
-func (_BatchAuthenticator *BatchAuthenticatorCaller) GetRoleMemberCount(opts *bind.CallOpts, role [32]byte) (*big.Int, error) {
-	var out []interface{}
-	err := _BatchAuthenticator.contract.Call(opts, &out, "getRoleMemberCount", role)
-
-	if err != nil {
-		return *new(*big.Int), err
-	}
-
-	out0 := *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
-
-	return out0, err
-
-}
-
-// GetRoleMemberCount is a free data retrieval call binding the contract method 0xca15c873.
-//
-// Solidity: function getRoleMemberCount(bytes32 role) view returns(uint256)
-func (_BatchAuthenticator *BatchAuthenticatorSession) GetRoleMemberCount(role [32]byte) (*big.Int, error) {
-	return _BatchAuthenticator.Contract.GetRoleMemberCount(&_BatchAuthenticator.CallOpts, role)
-}
-
-// GetRoleMemberCount is a free data retrieval call binding the contract method 0xca15c873.
-//
-// Solidity: function getRoleMemberCount(bytes32 role) view returns(uint256)
-func (_BatchAuthenticator *BatchAuthenticatorCallerSession) GetRoleMemberCount(role [32]byte) (*big.Int, error) {
-	return _BatchAuthenticator.Contract.GetRoleMemberCount(&_BatchAuthenticator.CallOpts, role)
-}
-
-// GetRoleMembers is a free data retrieval call binding the contract method 0xa3246ad3.
-//
-// Solidity: function getRoleMembers(bytes32 role) view returns(address[])
-func (_BatchAuthenticator *BatchAuthenticatorCaller) GetRoleMembers(opts *bind.CallOpts, role [32]byte) ([]common.Address, error) {
-	var out []interface{}
-	err := _BatchAuthenticator.contract.Call(opts, &out, "getRoleMembers", role)
-
-	if err != nil {
-		return *new([]common.Address), err
-	}
-
-	out0 := *abi.ConvertType(out[0], new([]common.Address)).(*[]common.Address)
-
-	return out0, err
-
-}
-
-// GetRoleMembers is a free data retrieval call binding the contract method 0xa3246ad3.
-//
-// Solidity: function getRoleMembers(bytes32 role) view returns(address[])
-func (_BatchAuthenticator *BatchAuthenticatorSession) GetRoleMembers(role [32]byte) ([]common.Address, error) {
-	return _BatchAuthenticator.Contract.GetRoleMembers(&_BatchAuthenticator.CallOpts, role)
-}
-
-// GetRoleMembers is a free data retrieval call binding the contract method 0xa3246ad3.
-//
-// Solidity: function getRoleMembers(bytes32 role) view returns(address[])
-func (_BatchAuthenticator *BatchAuthenticatorCallerSession) GetRoleMembers(role [32]byte) ([]common.Address, error) {
-	return _BatchAuthenticator.Contract.GetRoleMembers(&_BatchAuthenticator.CallOpts, role)
-}
-
 // GuardianCount is a free data retrieval call binding the contract method 0x54387ad7.
 //
 // Solidity: function guardianCount() view returns(uint256)
@@ -488,37 +333,6 @@ func (_BatchAuthenticator *BatchAuthenticatorSession) GuardianCount() (*big.Int,
 // Solidity: function guardianCount() view returns(uint256)
 func (_BatchAuthenticator *BatchAuthenticatorCallerSession) GuardianCount() (*big.Int, error) {
 	return _BatchAuthenticator.Contract.GuardianCount(&_BatchAuthenticator.CallOpts)
-}
-
-// HasRole is a free data retrieval call binding the contract method 0x91d14854.
-//
-// Solidity: function hasRole(bytes32 role, address account) view returns(bool)
-func (_BatchAuthenticator *BatchAuthenticatorCaller) HasRole(opts *bind.CallOpts, role [32]byte, account common.Address) (bool, error) {
-	var out []interface{}
-	err := _BatchAuthenticator.contract.Call(opts, &out, "hasRole", role, account)
-
-	if err != nil {
-		return *new(bool), err
-	}
-
-	out0 := *abi.ConvertType(out[0], new(bool)).(*bool)
-
-	return out0, err
-
-}
-
-// HasRole is a free data retrieval call binding the contract method 0x91d14854.
-//
-// Solidity: function hasRole(bytes32 role, address account) view returns(bool)
-func (_BatchAuthenticator *BatchAuthenticatorSession) HasRole(role [32]byte, account common.Address) (bool, error) {
-	return _BatchAuthenticator.Contract.HasRole(&_BatchAuthenticator.CallOpts, role, account)
-}
-
-// HasRole is a free data retrieval call binding the contract method 0x91d14854.
-//
-// Solidity: function hasRole(bytes32 role, address account) view returns(bool)
-func (_BatchAuthenticator *BatchAuthenticatorCallerSession) HasRole(role [32]byte, account common.Address) (bool, error) {
-	return _BatchAuthenticator.Contract.HasRole(&_BatchAuthenticator.CallOpts, role, account)
 }
 
 // InitVersion is a free data retrieval call binding the contract method 0x38d38c97.
@@ -645,6 +459,37 @@ func (_BatchAuthenticator *BatchAuthenticatorCallerSession) Owner() (common.Addr
 	return _BatchAuthenticator.Contract.Owner(&_BatchAuthenticator.CallOpts)
 }
 
+// Paused is a free data retrieval call binding the contract method 0x5c975abb.
+//
+// Solidity: function paused() view returns(bool)
+func (_BatchAuthenticator *BatchAuthenticatorCaller) Paused(opts *bind.CallOpts) (bool, error) {
+	var out []interface{}
+	err := _BatchAuthenticator.contract.Call(opts, &out, "paused")
+
+	if err != nil {
+		return *new(bool), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(bool)).(*bool)
+
+	return out0, err
+
+}
+
+// Paused is a free data retrieval call binding the contract method 0x5c975abb.
+//
+// Solidity: function paused() view returns(bool)
+func (_BatchAuthenticator *BatchAuthenticatorSession) Paused() (bool, error) {
+	return _BatchAuthenticator.Contract.Paused(&_BatchAuthenticator.CallOpts)
+}
+
+// Paused is a free data retrieval call binding the contract method 0x5c975abb.
+//
+// Solidity: function paused() view returns(bool)
+func (_BatchAuthenticator *BatchAuthenticatorCallerSession) Paused() (bool, error) {
+	return _BatchAuthenticator.Contract.Paused(&_BatchAuthenticator.CallOpts)
+}
+
 // PendingOwner is a free data retrieval call binding the contract method 0xe30c3978.
 //
 // Solidity: function pendingOwner() view returns(address)
@@ -738,37 +583,6 @@ func (_BatchAuthenticator *BatchAuthenticatorCallerSession) ProxyAdminOwner() (c
 	return _BatchAuthenticator.Contract.ProxyAdminOwner(&_BatchAuthenticator.CallOpts)
 }
 
-// SupportsInterface is a free data retrieval call binding the contract method 0x01ffc9a7.
-//
-// Solidity: function supportsInterface(bytes4 interfaceId) view returns(bool)
-func (_BatchAuthenticator *BatchAuthenticatorCaller) SupportsInterface(opts *bind.CallOpts, interfaceId [4]byte) (bool, error) {
-	var out []interface{}
-	err := _BatchAuthenticator.contract.Call(opts, &out, "supportsInterface", interfaceId)
-
-	if err != nil {
-		return *new(bool), err
-	}
-
-	out0 := *abi.ConvertType(out[0], new(bool)).(*bool)
-
-	return out0, err
-
-}
-
-// SupportsInterface is a free data retrieval call binding the contract method 0x01ffc9a7.
-//
-// Solidity: function supportsInterface(bytes4 interfaceId) view returns(bool)
-func (_BatchAuthenticator *BatchAuthenticatorSession) SupportsInterface(interfaceId [4]byte) (bool, error) {
-	return _BatchAuthenticator.Contract.SupportsInterface(&_BatchAuthenticator.CallOpts, interfaceId)
-}
-
-// SupportsInterface is a free data retrieval call binding the contract method 0x01ffc9a7.
-//
-// Solidity: function supportsInterface(bytes4 interfaceId) view returns(bool)
-func (_BatchAuthenticator *BatchAuthenticatorCallerSession) SupportsInterface(interfaceId [4]byte) (bool, error) {
-	return _BatchAuthenticator.Contract.SupportsInterface(&_BatchAuthenticator.CallOpts, interfaceId)
-}
-
 // SystemConfig is a free data retrieval call binding the contract method 0x33d7e2bd.
 //
 // Solidity: function systemConfig() view returns(address)
@@ -798,37 +612,6 @@ func (_BatchAuthenticator *BatchAuthenticatorSession) SystemConfig() (common.Add
 // Solidity: function systemConfig() view returns(address)
 func (_BatchAuthenticator *BatchAuthenticatorCallerSession) SystemConfig() (common.Address, error) {
 	return _BatchAuthenticator.Contract.SystemConfig(&_BatchAuthenticator.CallOpts)
-}
-
-// TeeBatcher is a free data retrieval call binding the contract method 0xd909ba7c.
-//
-// Solidity: function teeBatcher() view returns(address)
-func (_BatchAuthenticator *BatchAuthenticatorCaller) TeeBatcher(opts *bind.CallOpts) (common.Address, error) {
-	var out []interface{}
-	err := _BatchAuthenticator.contract.Call(opts, &out, "teeBatcher")
-
-	if err != nil {
-		return *new(common.Address), err
-	}
-
-	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
-
-	return out0, err
-
-}
-
-// TeeBatcher is a free data retrieval call binding the contract method 0xd909ba7c.
-//
-// Solidity: function teeBatcher() view returns(address)
-func (_BatchAuthenticator *BatchAuthenticatorSession) TeeBatcher() (common.Address, error) {
-	return _BatchAuthenticator.Contract.TeeBatcher(&_BatchAuthenticator.CallOpts)
-}
-
-// TeeBatcher is a free data retrieval call binding the contract method 0xd909ba7c.
-//
-// Solidity: function teeBatcher() view returns(address)
-func (_BatchAuthenticator *BatchAuthenticatorCallerSession) TeeBatcher() (common.Address, error) {
-	return _BatchAuthenticator.Contract.TeeBatcher(&_BatchAuthenticator.CallOpts)
 }
 
 // Version is a free data retrieval call binding the contract method 0x54fd4d50.
@@ -925,67 +708,46 @@ func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) AuthenticateBatc
 	return _BatchAuthenticator.Contract.AuthenticateBatchInfo(&_BatchAuthenticator.TransactOpts, commitment, _signature)
 }
 
-// GrantRole is a paid mutator transaction binding the contract method 0x2f2ff15d.
+// Initialize is a paid mutator transaction binding the contract method 0xf8c8765e.
 //
-// Solidity: function grantRole(bytes32 role, address account) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactor) GrantRole(opts *bind.TransactOpts, role [32]byte, account common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.contract.Transact(opts, "grantRole", role, account)
-}
-
-// GrantRole is a paid mutator transaction binding the contract method 0x2f2ff15d.
-//
-// Solidity: function grantRole(bytes32 role, address account) returns()
-func (_BatchAuthenticator *BatchAuthenticatorSession) GrantRole(role [32]byte, account common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.GrantRole(&_BatchAuthenticator.TransactOpts, role, account)
-}
-
-// GrantRole is a paid mutator transaction binding the contract method 0x2f2ff15d.
-//
-// Solidity: function grantRole(bytes32 role, address account) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) GrantRole(role [32]byte, account common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.GrantRole(&_BatchAuthenticator.TransactOpts, role, account)
+// Solidity: function initialize(address _espressoTEEVerifier, address _espressoBatcher, address _systemConfig, address _owner) returns()
+func (_BatchAuthenticator *BatchAuthenticatorTransactor) Initialize(opts *bind.TransactOpts, _espressoTEEVerifier common.Address, _espressoBatcher common.Address, _systemConfig common.Address, _owner common.Address) (*types.Transaction, error) {
+	return _BatchAuthenticator.contract.Transact(opts, "initialize", _espressoTEEVerifier, _espressoBatcher, _systemConfig, _owner)
 }
 
 // Initialize is a paid mutator transaction binding the contract method 0xf8c8765e.
 //
-// Solidity: function initialize(address _espressoTEEVerifier, address _teeBatcher, address _systemConfig, address _owner) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactor) Initialize(opts *bind.TransactOpts, _espressoTEEVerifier common.Address, _teeBatcher common.Address, _systemConfig common.Address, _owner common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.contract.Transact(opts, "initialize", _espressoTEEVerifier, _teeBatcher, _systemConfig, _owner)
+// Solidity: function initialize(address _espressoTEEVerifier, address _espressoBatcher, address _systemConfig, address _owner) returns()
+func (_BatchAuthenticator *BatchAuthenticatorSession) Initialize(_espressoTEEVerifier common.Address, _espressoBatcher common.Address, _systemConfig common.Address, _owner common.Address) (*types.Transaction, error) {
+	return _BatchAuthenticator.Contract.Initialize(&_BatchAuthenticator.TransactOpts, _espressoTEEVerifier, _espressoBatcher, _systemConfig, _owner)
 }
 
 // Initialize is a paid mutator transaction binding the contract method 0xf8c8765e.
 //
-// Solidity: function initialize(address _espressoTEEVerifier, address _teeBatcher, address _systemConfig, address _owner) returns()
-func (_BatchAuthenticator *BatchAuthenticatorSession) Initialize(_espressoTEEVerifier common.Address, _teeBatcher common.Address, _systemConfig common.Address, _owner common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.Initialize(&_BatchAuthenticator.TransactOpts, _espressoTEEVerifier, _teeBatcher, _systemConfig, _owner)
-}
-
-// Initialize is a paid mutator transaction binding the contract method 0xf8c8765e.
-//
-// Solidity: function initialize(address _espressoTEEVerifier, address _teeBatcher, address _systemConfig, address _owner) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) Initialize(_espressoTEEVerifier common.Address, _teeBatcher common.Address, _systemConfig common.Address, _owner common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.Initialize(&_BatchAuthenticator.TransactOpts, _espressoTEEVerifier, _teeBatcher, _systemConfig, _owner)
+// Solidity: function initialize(address _espressoTEEVerifier, address _espressoBatcher, address _systemConfig, address _owner) returns()
+func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) Initialize(_espressoTEEVerifier common.Address, _espressoBatcher common.Address, _systemConfig common.Address, _owner common.Address) (*types.Transaction, error) {
+	return _BatchAuthenticator.Contract.Initialize(&_BatchAuthenticator.TransactOpts, _espressoTEEVerifier, _espressoBatcher, _systemConfig, _owner)
 }
 
 // RegisterSigner is a paid mutator transaction binding the contract method 0xba58e82a.
 //
-// Solidity: function registerSigner(bytes attestationTbs, bytes signature) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactor) RegisterSigner(opts *bind.TransactOpts, attestationTbs []byte, signature []byte) (*types.Transaction, error) {
-	return _BatchAuthenticator.contract.Transact(opts, "registerSigner", attestationTbs, signature)
+// Solidity: function registerSigner(bytes verificationData, bytes data) returns()
+func (_BatchAuthenticator *BatchAuthenticatorTransactor) RegisterSigner(opts *bind.TransactOpts, verificationData []byte, data []byte) (*types.Transaction, error) {
+	return _BatchAuthenticator.contract.Transact(opts, "registerSigner", verificationData, data)
 }
 
 // RegisterSigner is a paid mutator transaction binding the contract method 0xba58e82a.
 //
-// Solidity: function registerSigner(bytes attestationTbs, bytes signature) returns()
-func (_BatchAuthenticator *BatchAuthenticatorSession) RegisterSigner(attestationTbs []byte, signature []byte) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.RegisterSigner(&_BatchAuthenticator.TransactOpts, attestationTbs, signature)
+// Solidity: function registerSigner(bytes verificationData, bytes data) returns()
+func (_BatchAuthenticator *BatchAuthenticatorSession) RegisterSigner(verificationData []byte, data []byte) (*types.Transaction, error) {
+	return _BatchAuthenticator.Contract.RegisterSigner(&_BatchAuthenticator.TransactOpts, verificationData, data)
 }
 
 // RegisterSigner is a paid mutator transaction binding the contract method 0xba58e82a.
 //
-// Solidity: function registerSigner(bytes attestationTbs, bytes signature) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) RegisterSigner(attestationTbs []byte, signature []byte) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.RegisterSigner(&_BatchAuthenticator.TransactOpts, attestationTbs, signature)
+// Solidity: function registerSigner(bytes verificationData, bytes data) returns()
+func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) RegisterSigner(verificationData []byte, data []byte) (*types.Transaction, error) {
+	return _BatchAuthenticator.Contract.RegisterSigner(&_BatchAuthenticator.TransactOpts, verificationData, data)
 }
 
 // RemoveGuardian is a paid mutator transaction binding the contract method 0x71404156.
@@ -1030,67 +792,25 @@ func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) RenounceOwnershi
 	return _BatchAuthenticator.Contract.RenounceOwnership(&_BatchAuthenticator.TransactOpts)
 }
 
-// RenounceRole is a paid mutator transaction binding the contract method 0x36568abe.
+// SetEspressoBatcher is a paid mutator transaction binding the contract method 0x2ce53247.
 //
-// Solidity: function renounceRole(bytes32 role, address callerConfirmation) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactor) RenounceRole(opts *bind.TransactOpts, role [32]byte, callerConfirmation common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.contract.Transact(opts, "renounceRole", role, callerConfirmation)
+// Solidity: function setEspressoBatcher(address _newEspressoBatcher) returns()
+func (_BatchAuthenticator *BatchAuthenticatorTransactor) SetEspressoBatcher(opts *bind.TransactOpts, _newEspressoBatcher common.Address) (*types.Transaction, error) {
+	return _BatchAuthenticator.contract.Transact(opts, "setEspressoBatcher", _newEspressoBatcher)
 }
 
-// RenounceRole is a paid mutator transaction binding the contract method 0x36568abe.
+// SetEspressoBatcher is a paid mutator transaction binding the contract method 0x2ce53247.
 //
-// Solidity: function renounceRole(bytes32 role, address callerConfirmation) returns()
-func (_BatchAuthenticator *BatchAuthenticatorSession) RenounceRole(role [32]byte, callerConfirmation common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.RenounceRole(&_BatchAuthenticator.TransactOpts, role, callerConfirmation)
+// Solidity: function setEspressoBatcher(address _newEspressoBatcher) returns()
+func (_BatchAuthenticator *BatchAuthenticatorSession) SetEspressoBatcher(_newEspressoBatcher common.Address) (*types.Transaction, error) {
+	return _BatchAuthenticator.Contract.SetEspressoBatcher(&_BatchAuthenticator.TransactOpts, _newEspressoBatcher)
 }
 
-// RenounceRole is a paid mutator transaction binding the contract method 0x36568abe.
+// SetEspressoBatcher is a paid mutator transaction binding the contract method 0x2ce53247.
 //
-// Solidity: function renounceRole(bytes32 role, address callerConfirmation) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) RenounceRole(role [32]byte, callerConfirmation common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.RenounceRole(&_BatchAuthenticator.TransactOpts, role, callerConfirmation)
-}
-
-// RevokeRole is a paid mutator transaction binding the contract method 0xd547741f.
-//
-// Solidity: function revokeRole(bytes32 role, address account) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactor) RevokeRole(opts *bind.TransactOpts, role [32]byte, account common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.contract.Transact(opts, "revokeRole", role, account)
-}
-
-// RevokeRole is a paid mutator transaction binding the contract method 0xd547741f.
-//
-// Solidity: function revokeRole(bytes32 role, address account) returns()
-func (_BatchAuthenticator *BatchAuthenticatorSession) RevokeRole(role [32]byte, account common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.RevokeRole(&_BatchAuthenticator.TransactOpts, role, account)
-}
-
-// RevokeRole is a paid mutator transaction binding the contract method 0xd547741f.
-//
-// Solidity: function revokeRole(bytes32 role, address account) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) RevokeRole(role [32]byte, account common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.RevokeRole(&_BatchAuthenticator.TransactOpts, role, account)
-}
-
-// SetTeeBatcher is a paid mutator transaction binding the contract method 0x6f7eda47.
-//
-// Solidity: function setTeeBatcher(address _newTeeBatcher) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactor) SetTeeBatcher(opts *bind.TransactOpts, _newTeeBatcher common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.contract.Transact(opts, "setTeeBatcher", _newTeeBatcher)
-}
-
-// SetTeeBatcher is a paid mutator transaction binding the contract method 0x6f7eda47.
-//
-// Solidity: function setTeeBatcher(address _newTeeBatcher) returns()
-func (_BatchAuthenticator *BatchAuthenticatorSession) SetTeeBatcher(_newTeeBatcher common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.SetTeeBatcher(&_BatchAuthenticator.TransactOpts, _newTeeBatcher)
-}
-
-// SetTeeBatcher is a paid mutator transaction binding the contract method 0x6f7eda47.
-//
-// Solidity: function setTeeBatcher(address _newTeeBatcher) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) SetTeeBatcher(_newTeeBatcher common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.SetTeeBatcher(&_BatchAuthenticator.TransactOpts, _newTeeBatcher)
+// Solidity: function setEspressoBatcher(address _newEspressoBatcher) returns()
+func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) SetEspressoBatcher(_newEspressoBatcher common.Address) (*types.Transaction, error) {
+	return _BatchAuthenticator.Contract.SetEspressoBatcher(&_BatchAuthenticator.TransactOpts, _newEspressoBatcher)
 }
 
 // SwitchBatcher is a paid mutator transaction binding the contract method 0xbc347f47.
@@ -1348,21 +1068,21 @@ func (it *BatchAuthenticatorBatcherSwitchedIterator) Close() error {
 
 // BatchAuthenticatorBatcherSwitched represents a BatcherSwitched event raised by the BatchAuthenticator contract.
 type BatchAuthenticatorBatcherSwitched struct {
-	ActiveIsTee bool
-	Raw         types.Log // Blockchain specific contextual infos
+	ActiveIsEspresso bool
+	Raw              types.Log // Blockchain specific contextual infos
 }
 
 // FilterBatcherSwitched is a free log retrieval operation binding the contract event 0xb957d7fc29e5974594db2f2e132076d52f42c0734eae05fd5ea080d1ba175ad3.
 //
-// Solidity: event BatcherSwitched(bool indexed activeIsTee)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) FilterBatcherSwitched(opts *bind.FilterOpts, activeIsTee []bool) (*BatchAuthenticatorBatcherSwitchedIterator, error) {
+// Solidity: event BatcherSwitched(bool indexed activeIsEspresso)
+func (_BatchAuthenticator *BatchAuthenticatorFilterer) FilterBatcherSwitched(opts *bind.FilterOpts, activeIsEspresso []bool) (*BatchAuthenticatorBatcherSwitchedIterator, error) {
 
-	var activeIsTeeRule []interface{}
-	for _, activeIsTeeItem := range activeIsTee {
-		activeIsTeeRule = append(activeIsTeeRule, activeIsTeeItem)
+	var activeIsEspressoRule []interface{}
+	for _, activeIsEspressoItem := range activeIsEspresso {
+		activeIsEspressoRule = append(activeIsEspressoRule, activeIsEspressoItem)
 	}
 
-	logs, sub, err := _BatchAuthenticator.contract.FilterLogs(opts, "BatcherSwitched", activeIsTeeRule)
+	logs, sub, err := _BatchAuthenticator.contract.FilterLogs(opts, "BatcherSwitched", activeIsEspressoRule)
 	if err != nil {
 		return nil, err
 	}
@@ -1371,15 +1091,15 @@ func (_BatchAuthenticator *BatchAuthenticatorFilterer) FilterBatcherSwitched(opt
 
 // WatchBatcherSwitched is a free log subscription operation binding the contract event 0xb957d7fc29e5974594db2f2e132076d52f42c0734eae05fd5ea080d1ba175ad3.
 //
-// Solidity: event BatcherSwitched(bool indexed activeIsTee)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) WatchBatcherSwitched(opts *bind.WatchOpts, sink chan<- *BatchAuthenticatorBatcherSwitched, activeIsTee []bool) (event.Subscription, error) {
+// Solidity: event BatcherSwitched(bool indexed activeIsEspresso)
+func (_BatchAuthenticator *BatchAuthenticatorFilterer) WatchBatcherSwitched(opts *bind.WatchOpts, sink chan<- *BatchAuthenticatorBatcherSwitched, activeIsEspresso []bool) (event.Subscription, error) {
 
-	var activeIsTeeRule []interface{}
-	for _, activeIsTeeItem := range activeIsTee {
-		activeIsTeeRule = append(activeIsTeeRule, activeIsTeeItem)
+	var activeIsEspressoRule []interface{}
+	for _, activeIsEspressoItem := range activeIsEspresso {
+		activeIsEspressoRule = append(activeIsEspressoRule, activeIsEspressoItem)
 	}
 
-	logs, sub, err := _BatchAuthenticator.contract.WatchLogs(opts, "BatcherSwitched", activeIsTeeRule)
+	logs, sub, err := _BatchAuthenticator.contract.WatchLogs(opts, "BatcherSwitched", activeIsEspressoRule)
 	if err != nil {
 		return nil, err
 	}
@@ -1413,10 +1133,163 @@ func (_BatchAuthenticator *BatchAuthenticatorFilterer) WatchBatcherSwitched(opts
 
 // ParseBatcherSwitched is a log parse operation binding the contract event 0xb957d7fc29e5974594db2f2e132076d52f42c0734eae05fd5ea080d1ba175ad3.
 //
-// Solidity: event BatcherSwitched(bool indexed activeIsTee)
+// Solidity: event BatcherSwitched(bool indexed activeIsEspresso)
 func (_BatchAuthenticator *BatchAuthenticatorFilterer) ParseBatcherSwitched(log types.Log) (*BatchAuthenticatorBatcherSwitched, error) {
 	event := new(BatchAuthenticatorBatcherSwitched)
 	if err := _BatchAuthenticator.contract.UnpackLog(event, "BatcherSwitched", log); err != nil {
+		return nil, err
+	}
+	event.Raw = log
+	return event, nil
+}
+
+// BatchAuthenticatorEspressoBatcherUpdatedIterator is returned from FilterEspressoBatcherUpdated and is used to iterate over the raw logs and unpacked data for EspressoBatcherUpdated events raised by the BatchAuthenticator contract.
+type BatchAuthenticatorEspressoBatcherUpdatedIterator struct {
+	Event *BatchAuthenticatorEspressoBatcherUpdated // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *BatchAuthenticatorEspressoBatcherUpdatedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(BatchAuthenticatorEspressoBatcherUpdated)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(BatchAuthenticatorEspressoBatcherUpdated)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *BatchAuthenticatorEspressoBatcherUpdatedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *BatchAuthenticatorEspressoBatcherUpdatedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// BatchAuthenticatorEspressoBatcherUpdated represents a EspressoBatcherUpdated event raised by the BatchAuthenticator contract.
+type BatchAuthenticatorEspressoBatcherUpdated struct {
+	OldEspressoBatcher common.Address
+	NewEspressoBatcher common.Address
+	Raw                types.Log // Blockchain specific contextual infos
+}
+
+// FilterEspressoBatcherUpdated is a free log retrieval operation binding the contract event 0xc7bef7b97a10ef514a01fa4d5552f5c57e72a37aa901f567bb49bbf9ea449f9c.
+//
+// Solidity: event EspressoBatcherUpdated(address indexed oldEspressoBatcher, address indexed newEspressoBatcher)
+func (_BatchAuthenticator *BatchAuthenticatorFilterer) FilterEspressoBatcherUpdated(opts *bind.FilterOpts, oldEspressoBatcher []common.Address, newEspressoBatcher []common.Address) (*BatchAuthenticatorEspressoBatcherUpdatedIterator, error) {
+
+	var oldEspressoBatcherRule []interface{}
+	for _, oldEspressoBatcherItem := range oldEspressoBatcher {
+		oldEspressoBatcherRule = append(oldEspressoBatcherRule, oldEspressoBatcherItem)
+	}
+	var newEspressoBatcherRule []interface{}
+	for _, newEspressoBatcherItem := range newEspressoBatcher {
+		newEspressoBatcherRule = append(newEspressoBatcherRule, newEspressoBatcherItem)
+	}
+
+	logs, sub, err := _BatchAuthenticator.contract.FilterLogs(opts, "EspressoBatcherUpdated", oldEspressoBatcherRule, newEspressoBatcherRule)
+	if err != nil {
+		return nil, err
+	}
+	return &BatchAuthenticatorEspressoBatcherUpdatedIterator{contract: _BatchAuthenticator.contract, event: "EspressoBatcherUpdated", logs: logs, sub: sub}, nil
+}
+
+// WatchEspressoBatcherUpdated is a free log subscription operation binding the contract event 0xc7bef7b97a10ef514a01fa4d5552f5c57e72a37aa901f567bb49bbf9ea449f9c.
+//
+// Solidity: event EspressoBatcherUpdated(address indexed oldEspressoBatcher, address indexed newEspressoBatcher)
+func (_BatchAuthenticator *BatchAuthenticatorFilterer) WatchEspressoBatcherUpdated(opts *bind.WatchOpts, sink chan<- *BatchAuthenticatorEspressoBatcherUpdated, oldEspressoBatcher []common.Address, newEspressoBatcher []common.Address) (event.Subscription, error) {
+
+	var oldEspressoBatcherRule []interface{}
+	for _, oldEspressoBatcherItem := range oldEspressoBatcher {
+		oldEspressoBatcherRule = append(oldEspressoBatcherRule, oldEspressoBatcherItem)
+	}
+	var newEspressoBatcherRule []interface{}
+	for _, newEspressoBatcherItem := range newEspressoBatcher {
+		newEspressoBatcherRule = append(newEspressoBatcherRule, newEspressoBatcherItem)
+	}
+
+	logs, sub, err := _BatchAuthenticator.contract.WatchLogs(opts, "EspressoBatcherUpdated", oldEspressoBatcherRule, newEspressoBatcherRule)
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(BatchAuthenticatorEspressoBatcherUpdated)
+				if err := _BatchAuthenticator.contract.UnpackLog(event, "EspressoBatcherUpdated", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ParseEspressoBatcherUpdated is a log parse operation binding the contract event 0xc7bef7b97a10ef514a01fa4d5552f5c57e72a37aa901f567bb49bbf9ea449f9c.
+//
+// Solidity: event EspressoBatcherUpdated(address indexed oldEspressoBatcher, address indexed newEspressoBatcher)
+func (_BatchAuthenticator *BatchAuthenticatorFilterer) ParseEspressoBatcherUpdated(log types.Log) (*BatchAuthenticatorEspressoBatcherUpdated, error) {
+	event := new(BatchAuthenticatorEspressoBatcherUpdated)
+	if err := _BatchAuthenticator.contract.UnpackLog(event, "EspressoBatcherUpdated", log); err != nil {
 		return nil, err
 	}
 	event.Raw = log
@@ -2151,492 +2024,6 @@ func (_BatchAuthenticator *BatchAuthenticatorFilterer) ParseOwnershipTransferred
 	return event, nil
 }
 
-// BatchAuthenticatorRoleAdminChangedIterator is returned from FilterRoleAdminChanged and is used to iterate over the raw logs and unpacked data for RoleAdminChanged events raised by the BatchAuthenticator contract.
-type BatchAuthenticatorRoleAdminChangedIterator struct {
-	Event *BatchAuthenticatorRoleAdminChanged // Event containing the contract specifics and raw log
-
-	contract *bind.BoundContract // Generic contract to use for unpacking event data
-	event    string              // Event name to use for unpacking event data
-
-	logs chan types.Log        // Log channel receiving the found contract events
-	sub  ethereum.Subscription // Subscription for errors, completion and termination
-	done bool                  // Whether the subscription completed delivering logs
-	fail error                 // Occurred error to stop iteration
-}
-
-// Next advances the iterator to the subsequent event, returning whether there
-// are any more events found. In case of a retrieval or parsing error, false is
-// returned and Error() can be queried for the exact failure.
-func (it *BatchAuthenticatorRoleAdminChangedIterator) Next() bool {
-	// If the iterator failed, stop iterating
-	if it.fail != nil {
-		return false
-	}
-	// If the iterator completed, deliver directly whatever's available
-	if it.done {
-		select {
-		case log := <-it.logs:
-			it.Event = new(BatchAuthenticatorRoleAdminChanged)
-			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
-				it.fail = err
-				return false
-			}
-			it.Event.Raw = log
-			return true
-
-		default:
-			return false
-		}
-	}
-	// Iterator still in progress, wait for either a data or an error event
-	select {
-	case log := <-it.logs:
-		it.Event = new(BatchAuthenticatorRoleAdminChanged)
-		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
-			it.fail = err
-			return false
-		}
-		it.Event.Raw = log
-		return true
-
-	case err := <-it.sub.Err():
-		it.done = true
-		it.fail = err
-		return it.Next()
-	}
-}
-
-// Error returns any retrieval or parsing error occurred during filtering.
-func (it *BatchAuthenticatorRoleAdminChangedIterator) Error() error {
-	return it.fail
-}
-
-// Close terminates the iteration process, releasing any pending underlying
-// resources.
-func (it *BatchAuthenticatorRoleAdminChangedIterator) Close() error {
-	it.sub.Unsubscribe()
-	return nil
-}
-
-// BatchAuthenticatorRoleAdminChanged represents a RoleAdminChanged event raised by the BatchAuthenticator contract.
-type BatchAuthenticatorRoleAdminChanged struct {
-	Role              [32]byte
-	PreviousAdminRole [32]byte
-	NewAdminRole      [32]byte
-	Raw               types.Log // Blockchain specific contextual infos
-}
-
-// FilterRoleAdminChanged is a free log retrieval operation binding the contract event 0xbd79b86ffe0ab8e8776151514217cd7cacd52c909f66475c3af44e129f0b00ff.
-//
-// Solidity: event RoleAdminChanged(bytes32 indexed role, bytes32 indexed previousAdminRole, bytes32 indexed newAdminRole)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) FilterRoleAdminChanged(opts *bind.FilterOpts, role [][32]byte, previousAdminRole [][32]byte, newAdminRole [][32]byte) (*BatchAuthenticatorRoleAdminChangedIterator, error) {
-
-	var roleRule []interface{}
-	for _, roleItem := range role {
-		roleRule = append(roleRule, roleItem)
-	}
-	var previousAdminRoleRule []interface{}
-	for _, previousAdminRoleItem := range previousAdminRole {
-		previousAdminRoleRule = append(previousAdminRoleRule, previousAdminRoleItem)
-	}
-	var newAdminRoleRule []interface{}
-	for _, newAdminRoleItem := range newAdminRole {
-		newAdminRoleRule = append(newAdminRoleRule, newAdminRoleItem)
-	}
-
-	logs, sub, err := _BatchAuthenticator.contract.FilterLogs(opts, "RoleAdminChanged", roleRule, previousAdminRoleRule, newAdminRoleRule)
-	if err != nil {
-		return nil, err
-	}
-	return &BatchAuthenticatorRoleAdminChangedIterator{contract: _BatchAuthenticator.contract, event: "RoleAdminChanged", logs: logs, sub: sub}, nil
-}
-
-// WatchRoleAdminChanged is a free log subscription operation binding the contract event 0xbd79b86ffe0ab8e8776151514217cd7cacd52c909f66475c3af44e129f0b00ff.
-//
-// Solidity: event RoleAdminChanged(bytes32 indexed role, bytes32 indexed previousAdminRole, bytes32 indexed newAdminRole)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) WatchRoleAdminChanged(opts *bind.WatchOpts, sink chan<- *BatchAuthenticatorRoleAdminChanged, role [][32]byte, previousAdminRole [][32]byte, newAdminRole [][32]byte) (event.Subscription, error) {
-
-	var roleRule []interface{}
-	for _, roleItem := range role {
-		roleRule = append(roleRule, roleItem)
-	}
-	var previousAdminRoleRule []interface{}
-	for _, previousAdminRoleItem := range previousAdminRole {
-		previousAdminRoleRule = append(previousAdminRoleRule, previousAdminRoleItem)
-	}
-	var newAdminRoleRule []interface{}
-	for _, newAdminRoleItem := range newAdminRole {
-		newAdminRoleRule = append(newAdminRoleRule, newAdminRoleItem)
-	}
-
-	logs, sub, err := _BatchAuthenticator.contract.WatchLogs(opts, "RoleAdminChanged", roleRule, previousAdminRoleRule, newAdminRoleRule)
-	if err != nil {
-		return nil, err
-	}
-	return event.NewSubscription(func(quit <-chan struct{}) error {
-		defer sub.Unsubscribe()
-		for {
-			select {
-			case log := <-logs:
-				// New log arrived, parse the event and forward to the user
-				event := new(BatchAuthenticatorRoleAdminChanged)
-				if err := _BatchAuthenticator.contract.UnpackLog(event, "RoleAdminChanged", log); err != nil {
-					return err
-				}
-				event.Raw = log
-
-				select {
-				case sink <- event:
-				case err := <-sub.Err():
-					return err
-				case <-quit:
-					return nil
-				}
-			case err := <-sub.Err():
-				return err
-			case <-quit:
-				return nil
-			}
-		}
-	}), nil
-}
-
-// ParseRoleAdminChanged is a log parse operation binding the contract event 0xbd79b86ffe0ab8e8776151514217cd7cacd52c909f66475c3af44e129f0b00ff.
-//
-// Solidity: event RoleAdminChanged(bytes32 indexed role, bytes32 indexed previousAdminRole, bytes32 indexed newAdminRole)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) ParseRoleAdminChanged(log types.Log) (*BatchAuthenticatorRoleAdminChanged, error) {
-	event := new(BatchAuthenticatorRoleAdminChanged)
-	if err := _BatchAuthenticator.contract.UnpackLog(event, "RoleAdminChanged", log); err != nil {
-		return nil, err
-	}
-	event.Raw = log
-	return event, nil
-}
-
-// BatchAuthenticatorRoleGrantedIterator is returned from FilterRoleGranted and is used to iterate over the raw logs and unpacked data for RoleGranted events raised by the BatchAuthenticator contract.
-type BatchAuthenticatorRoleGrantedIterator struct {
-	Event *BatchAuthenticatorRoleGranted // Event containing the contract specifics and raw log
-
-	contract *bind.BoundContract // Generic contract to use for unpacking event data
-	event    string              // Event name to use for unpacking event data
-
-	logs chan types.Log        // Log channel receiving the found contract events
-	sub  ethereum.Subscription // Subscription for errors, completion and termination
-	done bool                  // Whether the subscription completed delivering logs
-	fail error                 // Occurred error to stop iteration
-}
-
-// Next advances the iterator to the subsequent event, returning whether there
-// are any more events found. In case of a retrieval or parsing error, false is
-// returned and Error() can be queried for the exact failure.
-func (it *BatchAuthenticatorRoleGrantedIterator) Next() bool {
-	// If the iterator failed, stop iterating
-	if it.fail != nil {
-		return false
-	}
-	// If the iterator completed, deliver directly whatever's available
-	if it.done {
-		select {
-		case log := <-it.logs:
-			it.Event = new(BatchAuthenticatorRoleGranted)
-			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
-				it.fail = err
-				return false
-			}
-			it.Event.Raw = log
-			return true
-
-		default:
-			return false
-		}
-	}
-	// Iterator still in progress, wait for either a data or an error event
-	select {
-	case log := <-it.logs:
-		it.Event = new(BatchAuthenticatorRoleGranted)
-		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
-			it.fail = err
-			return false
-		}
-		it.Event.Raw = log
-		return true
-
-	case err := <-it.sub.Err():
-		it.done = true
-		it.fail = err
-		return it.Next()
-	}
-}
-
-// Error returns any retrieval or parsing error occurred during filtering.
-func (it *BatchAuthenticatorRoleGrantedIterator) Error() error {
-	return it.fail
-}
-
-// Close terminates the iteration process, releasing any pending underlying
-// resources.
-func (it *BatchAuthenticatorRoleGrantedIterator) Close() error {
-	it.sub.Unsubscribe()
-	return nil
-}
-
-// BatchAuthenticatorRoleGranted represents a RoleGranted event raised by the BatchAuthenticator contract.
-type BatchAuthenticatorRoleGranted struct {
-	Role    [32]byte
-	Account common.Address
-	Sender  common.Address
-	Raw     types.Log // Blockchain specific contextual infos
-}
-
-// FilterRoleGranted is a free log retrieval operation binding the contract event 0x2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d.
-//
-// Solidity: event RoleGranted(bytes32 indexed role, address indexed account, address indexed sender)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) FilterRoleGranted(opts *bind.FilterOpts, role [][32]byte, account []common.Address, sender []common.Address) (*BatchAuthenticatorRoleGrantedIterator, error) {
-
-	var roleRule []interface{}
-	for _, roleItem := range role {
-		roleRule = append(roleRule, roleItem)
-	}
-	var accountRule []interface{}
-	for _, accountItem := range account {
-		accountRule = append(accountRule, accountItem)
-	}
-	var senderRule []interface{}
-	for _, senderItem := range sender {
-		senderRule = append(senderRule, senderItem)
-	}
-
-	logs, sub, err := _BatchAuthenticator.contract.FilterLogs(opts, "RoleGranted", roleRule, accountRule, senderRule)
-	if err != nil {
-		return nil, err
-	}
-	return &BatchAuthenticatorRoleGrantedIterator{contract: _BatchAuthenticator.contract, event: "RoleGranted", logs: logs, sub: sub}, nil
-}
-
-// WatchRoleGranted is a free log subscription operation binding the contract event 0x2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d.
-//
-// Solidity: event RoleGranted(bytes32 indexed role, address indexed account, address indexed sender)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) WatchRoleGranted(opts *bind.WatchOpts, sink chan<- *BatchAuthenticatorRoleGranted, role [][32]byte, account []common.Address, sender []common.Address) (event.Subscription, error) {
-
-	var roleRule []interface{}
-	for _, roleItem := range role {
-		roleRule = append(roleRule, roleItem)
-	}
-	var accountRule []interface{}
-	for _, accountItem := range account {
-		accountRule = append(accountRule, accountItem)
-	}
-	var senderRule []interface{}
-	for _, senderItem := range sender {
-		senderRule = append(senderRule, senderItem)
-	}
-
-	logs, sub, err := _BatchAuthenticator.contract.WatchLogs(opts, "RoleGranted", roleRule, accountRule, senderRule)
-	if err != nil {
-		return nil, err
-	}
-	return event.NewSubscription(func(quit <-chan struct{}) error {
-		defer sub.Unsubscribe()
-		for {
-			select {
-			case log := <-logs:
-				// New log arrived, parse the event and forward to the user
-				event := new(BatchAuthenticatorRoleGranted)
-				if err := _BatchAuthenticator.contract.UnpackLog(event, "RoleGranted", log); err != nil {
-					return err
-				}
-				event.Raw = log
-
-				select {
-				case sink <- event:
-				case err := <-sub.Err():
-					return err
-				case <-quit:
-					return nil
-				}
-			case err := <-sub.Err():
-				return err
-			case <-quit:
-				return nil
-			}
-		}
-	}), nil
-}
-
-// ParseRoleGranted is a log parse operation binding the contract event 0x2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d.
-//
-// Solidity: event RoleGranted(bytes32 indexed role, address indexed account, address indexed sender)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) ParseRoleGranted(log types.Log) (*BatchAuthenticatorRoleGranted, error) {
-	event := new(BatchAuthenticatorRoleGranted)
-	if err := _BatchAuthenticator.contract.UnpackLog(event, "RoleGranted", log); err != nil {
-		return nil, err
-	}
-	event.Raw = log
-	return event, nil
-}
-
-// BatchAuthenticatorRoleRevokedIterator is returned from FilterRoleRevoked and is used to iterate over the raw logs and unpacked data for RoleRevoked events raised by the BatchAuthenticator contract.
-type BatchAuthenticatorRoleRevokedIterator struct {
-	Event *BatchAuthenticatorRoleRevoked // Event containing the contract specifics and raw log
-
-	contract *bind.BoundContract // Generic contract to use for unpacking event data
-	event    string              // Event name to use for unpacking event data
-
-	logs chan types.Log        // Log channel receiving the found contract events
-	sub  ethereum.Subscription // Subscription for errors, completion and termination
-	done bool                  // Whether the subscription completed delivering logs
-	fail error                 // Occurred error to stop iteration
-}
-
-// Next advances the iterator to the subsequent event, returning whether there
-// are any more events found. In case of a retrieval or parsing error, false is
-// returned and Error() can be queried for the exact failure.
-func (it *BatchAuthenticatorRoleRevokedIterator) Next() bool {
-	// If the iterator failed, stop iterating
-	if it.fail != nil {
-		return false
-	}
-	// If the iterator completed, deliver directly whatever's available
-	if it.done {
-		select {
-		case log := <-it.logs:
-			it.Event = new(BatchAuthenticatorRoleRevoked)
-			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
-				it.fail = err
-				return false
-			}
-			it.Event.Raw = log
-			return true
-
-		default:
-			return false
-		}
-	}
-	// Iterator still in progress, wait for either a data or an error event
-	select {
-	case log := <-it.logs:
-		it.Event = new(BatchAuthenticatorRoleRevoked)
-		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
-			it.fail = err
-			return false
-		}
-		it.Event.Raw = log
-		return true
-
-	case err := <-it.sub.Err():
-		it.done = true
-		it.fail = err
-		return it.Next()
-	}
-}
-
-// Error returns any retrieval or parsing error occurred during filtering.
-func (it *BatchAuthenticatorRoleRevokedIterator) Error() error {
-	return it.fail
-}
-
-// Close terminates the iteration process, releasing any pending underlying
-// resources.
-func (it *BatchAuthenticatorRoleRevokedIterator) Close() error {
-	it.sub.Unsubscribe()
-	return nil
-}
-
-// BatchAuthenticatorRoleRevoked represents a RoleRevoked event raised by the BatchAuthenticator contract.
-type BatchAuthenticatorRoleRevoked struct {
-	Role    [32]byte
-	Account common.Address
-	Sender  common.Address
-	Raw     types.Log // Blockchain specific contextual infos
-}
-
-// FilterRoleRevoked is a free log retrieval operation binding the contract event 0xf6391f5c32d9c69d2a47ea670b442974b53935d1edc7fd64eb21e047a839171b.
-//
-// Solidity: event RoleRevoked(bytes32 indexed role, address indexed account, address indexed sender)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) FilterRoleRevoked(opts *bind.FilterOpts, role [][32]byte, account []common.Address, sender []common.Address) (*BatchAuthenticatorRoleRevokedIterator, error) {
-
-	var roleRule []interface{}
-	for _, roleItem := range role {
-		roleRule = append(roleRule, roleItem)
-	}
-	var accountRule []interface{}
-	for _, accountItem := range account {
-		accountRule = append(accountRule, accountItem)
-	}
-	var senderRule []interface{}
-	for _, senderItem := range sender {
-		senderRule = append(senderRule, senderItem)
-	}
-
-	logs, sub, err := _BatchAuthenticator.contract.FilterLogs(opts, "RoleRevoked", roleRule, accountRule, senderRule)
-	if err != nil {
-		return nil, err
-	}
-	return &BatchAuthenticatorRoleRevokedIterator{contract: _BatchAuthenticator.contract, event: "RoleRevoked", logs: logs, sub: sub}, nil
-}
-
-// WatchRoleRevoked is a free log subscription operation binding the contract event 0xf6391f5c32d9c69d2a47ea670b442974b53935d1edc7fd64eb21e047a839171b.
-//
-// Solidity: event RoleRevoked(bytes32 indexed role, address indexed account, address indexed sender)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) WatchRoleRevoked(opts *bind.WatchOpts, sink chan<- *BatchAuthenticatorRoleRevoked, role [][32]byte, account []common.Address, sender []common.Address) (event.Subscription, error) {
-
-	var roleRule []interface{}
-	for _, roleItem := range role {
-		roleRule = append(roleRule, roleItem)
-	}
-	var accountRule []interface{}
-	for _, accountItem := range account {
-		accountRule = append(accountRule, accountItem)
-	}
-	var senderRule []interface{}
-	for _, senderItem := range sender {
-		senderRule = append(senderRule, senderItem)
-	}
-
-	logs, sub, err := _BatchAuthenticator.contract.WatchLogs(opts, "RoleRevoked", roleRule, accountRule, senderRule)
-	if err != nil {
-		return nil, err
-	}
-	return event.NewSubscription(func(quit <-chan struct{}) error {
-		defer sub.Unsubscribe()
-		for {
-			select {
-			case log := <-logs:
-				// New log arrived, parse the event and forward to the user
-				event := new(BatchAuthenticatorRoleRevoked)
-				if err := _BatchAuthenticator.contract.UnpackLog(event, "RoleRevoked", log); err != nil {
-					return err
-				}
-				event.Raw = log
-
-				select {
-				case sink <- event:
-				case err := <-sub.Err():
-					return err
-				case <-quit:
-					return nil
-				}
-			case err := <-sub.Err():
-				return err
-			case <-quit:
-				return nil
-			}
-		}
-	}), nil
-}
-
-// ParseRoleRevoked is a log parse operation binding the contract event 0xf6391f5c32d9c69d2a47ea670b442974b53935d1edc7fd64eb21e047a839171b.
-//
-// Solidity: event RoleRevoked(bytes32 indexed role, address indexed account, address indexed sender)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) ParseRoleRevoked(log types.Log) (*BatchAuthenticatorRoleRevoked, error) {
-	event := new(BatchAuthenticatorRoleRevoked)
-	if err := _BatchAuthenticator.contract.UnpackLog(event, "RoleRevoked", log); err != nil {
-		return nil, err
-	}
-	event.Raw = log
-	return event, nil
-}
-
 // BatchAuthenticatorSignerRegistrationInitiatedIterator is returned from FilterSignerRegistrationInitiated and is used to iterate over the raw logs and unpacked data for SignerRegistrationInitiated events raised by the BatchAuthenticator contract.
 type BatchAuthenticatorSignerRegistrationInitiatedIterator struct {
 	Event *BatchAuthenticatorSignerRegistrationInitiated // Event containing the contract specifics and raw log
@@ -2775,159 +2162,6 @@ func (_BatchAuthenticator *BatchAuthenticatorFilterer) WatchSignerRegistrationIn
 func (_BatchAuthenticator *BatchAuthenticatorFilterer) ParseSignerRegistrationInitiated(log types.Log) (*BatchAuthenticatorSignerRegistrationInitiated, error) {
 	event := new(BatchAuthenticatorSignerRegistrationInitiated)
 	if err := _BatchAuthenticator.contract.UnpackLog(event, "SignerRegistrationInitiated", log); err != nil {
-		return nil, err
-	}
-	event.Raw = log
-	return event, nil
-}
-
-// BatchAuthenticatorTeeBatcherUpdatedIterator is returned from FilterTeeBatcherUpdated and is used to iterate over the raw logs and unpacked data for TeeBatcherUpdated events raised by the BatchAuthenticator contract.
-type BatchAuthenticatorTeeBatcherUpdatedIterator struct {
-	Event *BatchAuthenticatorTeeBatcherUpdated // Event containing the contract specifics and raw log
-
-	contract *bind.BoundContract // Generic contract to use for unpacking event data
-	event    string              // Event name to use for unpacking event data
-
-	logs chan types.Log        // Log channel receiving the found contract events
-	sub  ethereum.Subscription // Subscription for errors, completion and termination
-	done bool                  // Whether the subscription completed delivering logs
-	fail error                 // Occurred error to stop iteration
-}
-
-// Next advances the iterator to the subsequent event, returning whether there
-// are any more events found. In case of a retrieval or parsing error, false is
-// returned and Error() can be queried for the exact failure.
-func (it *BatchAuthenticatorTeeBatcherUpdatedIterator) Next() bool {
-	// If the iterator failed, stop iterating
-	if it.fail != nil {
-		return false
-	}
-	// If the iterator completed, deliver directly whatever's available
-	if it.done {
-		select {
-		case log := <-it.logs:
-			it.Event = new(BatchAuthenticatorTeeBatcherUpdated)
-			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
-				it.fail = err
-				return false
-			}
-			it.Event.Raw = log
-			return true
-
-		default:
-			return false
-		}
-	}
-	// Iterator still in progress, wait for either a data or an error event
-	select {
-	case log := <-it.logs:
-		it.Event = new(BatchAuthenticatorTeeBatcherUpdated)
-		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
-			it.fail = err
-			return false
-		}
-		it.Event.Raw = log
-		return true
-
-	case err := <-it.sub.Err():
-		it.done = true
-		it.fail = err
-		return it.Next()
-	}
-}
-
-// Error returns any retrieval or parsing error occurred during filtering.
-func (it *BatchAuthenticatorTeeBatcherUpdatedIterator) Error() error {
-	return it.fail
-}
-
-// Close terminates the iteration process, releasing any pending underlying
-// resources.
-func (it *BatchAuthenticatorTeeBatcherUpdatedIterator) Close() error {
-	it.sub.Unsubscribe()
-	return nil
-}
-
-// BatchAuthenticatorTeeBatcherUpdated represents a TeeBatcherUpdated event raised by the BatchAuthenticator contract.
-type BatchAuthenticatorTeeBatcherUpdated struct {
-	OldTeeBatcher common.Address
-	NewTeeBatcher common.Address
-	Raw           types.Log // Blockchain specific contextual infos
-}
-
-// FilterTeeBatcherUpdated is a free log retrieval operation binding the contract event 0x5186a10c46a3a9c7ec5470c24b80c6414eba1320cf76bf72ef5135773c7b3327.
-//
-// Solidity: event TeeBatcherUpdated(address indexed oldTeeBatcher, address indexed newTeeBatcher)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) FilterTeeBatcherUpdated(opts *bind.FilterOpts, oldTeeBatcher []common.Address, newTeeBatcher []common.Address) (*BatchAuthenticatorTeeBatcherUpdatedIterator, error) {
-
-	var oldTeeBatcherRule []interface{}
-	for _, oldTeeBatcherItem := range oldTeeBatcher {
-		oldTeeBatcherRule = append(oldTeeBatcherRule, oldTeeBatcherItem)
-	}
-	var newTeeBatcherRule []interface{}
-	for _, newTeeBatcherItem := range newTeeBatcher {
-		newTeeBatcherRule = append(newTeeBatcherRule, newTeeBatcherItem)
-	}
-
-	logs, sub, err := _BatchAuthenticator.contract.FilterLogs(opts, "TeeBatcherUpdated", oldTeeBatcherRule, newTeeBatcherRule)
-	if err != nil {
-		return nil, err
-	}
-	return &BatchAuthenticatorTeeBatcherUpdatedIterator{contract: _BatchAuthenticator.contract, event: "TeeBatcherUpdated", logs: logs, sub: sub}, nil
-}
-
-// WatchTeeBatcherUpdated is a free log subscription operation binding the contract event 0x5186a10c46a3a9c7ec5470c24b80c6414eba1320cf76bf72ef5135773c7b3327.
-//
-// Solidity: event TeeBatcherUpdated(address indexed oldTeeBatcher, address indexed newTeeBatcher)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) WatchTeeBatcherUpdated(opts *bind.WatchOpts, sink chan<- *BatchAuthenticatorTeeBatcherUpdated, oldTeeBatcher []common.Address, newTeeBatcher []common.Address) (event.Subscription, error) {
-
-	var oldTeeBatcherRule []interface{}
-	for _, oldTeeBatcherItem := range oldTeeBatcher {
-		oldTeeBatcherRule = append(oldTeeBatcherRule, oldTeeBatcherItem)
-	}
-	var newTeeBatcherRule []interface{}
-	for _, newTeeBatcherItem := range newTeeBatcher {
-		newTeeBatcherRule = append(newTeeBatcherRule, newTeeBatcherItem)
-	}
-
-	logs, sub, err := _BatchAuthenticator.contract.WatchLogs(opts, "TeeBatcherUpdated", oldTeeBatcherRule, newTeeBatcherRule)
-	if err != nil {
-		return nil, err
-	}
-	return event.NewSubscription(func(quit <-chan struct{}) error {
-		defer sub.Unsubscribe()
-		for {
-			select {
-			case log := <-logs:
-				// New log arrived, parse the event and forward to the user
-				event := new(BatchAuthenticatorTeeBatcherUpdated)
-				if err := _BatchAuthenticator.contract.UnpackLog(event, "TeeBatcherUpdated", log); err != nil {
-					return err
-				}
-				event.Raw = log
-
-				select {
-				case sink <- event:
-				case err := <-sub.Err():
-					return err
-				case <-quit:
-					return nil
-				}
-			case err := <-sub.Err():
-				return err
-			case <-quit:
-				return nil
-			}
-		}
-	}), nil
-}
-
-// ParseTeeBatcherUpdated is a log parse operation binding the contract event 0x5186a10c46a3a9c7ec5470c24b80c6414eba1320cf76bf72ef5135773c7b3327.
-//
-// Solidity: event TeeBatcherUpdated(address indexed oldTeeBatcher, address indexed newTeeBatcher)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) ParseTeeBatcherUpdated(log types.Log) (*BatchAuthenticatorTeeBatcherUpdated, error) {
-	event := new(BatchAuthenticatorTeeBatcherUpdated)
-	if err := _BatchAuthenticator.contract.UnpackLog(event, "TeeBatcherUpdated", log); err != nil {
 		return nil, err
 	}
 	event.Raw = log
