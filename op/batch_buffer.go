@@ -64,14 +64,14 @@ func (b *BatchBuffer[B]) Insert(batch B) error {
 	}
 
 	pos, alreadyExists := slices.BinarySearchFunc(b.batches, batch, func(a, t B) int {
+		if a.Hash() == t.Hash() {
+			return 0
+		}
 		if a.Number() < t.Number() {
 			return -1
 		}
 		if a.Number() > t.Number() {
 			return 1
-		}
-		if a.Hash() == t.Hash() {
-			return 0
 		}
 		// Same number, different hash: treat the existing batch as less than the new one,
 		// so the new batch is inserted after all existing same-number batches. Since batches
