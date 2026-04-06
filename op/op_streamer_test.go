@@ -228,8 +228,8 @@ func (m *MockStreamerSource) HeaderHashByNumber(ctx context.Context, number *big
 	return l1Ref.Hash, nil
 }
 
-// teeBatcherSelector is the 4-byte function selector for teeBatcher() — 0xd909ba7c
-var teeBatcherSelector = []byte{0xd9, 0x09, 0xba, 0x7c}
+// espressoBatcherSelector is the 4-byte function selector for espressoBatcher() — 0x88da3bb7
+var espressoBatcherSelector = []byte{0x88, 0xda, 0x3b, 0xb7}
 
 func (m *MockStreamerSource) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
 	// Return non-empty bytes so the bindings consider the contract deployed
@@ -237,7 +237,7 @@ func (m *MockStreamerSource) CodeAt(ctx context.Context, contract common.Address
 }
 
 func (m *MockStreamerSource) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
-	if len(call.Data) >= 4 && common.Bytes2Hex(call.Data[:4]) == common.Bytes2Hex(teeBatcherSelector) {
+	if len(call.Data) >= 4 && common.Bytes2Hex(call.Data[:4]) == common.Bytes2Hex(espressoBatcherSelector) {
 		// ABI-encode the TEE batcher address as a 32-byte left-padded word
 		var result [32]byte
 		copy(result[12:], m.TeeBatcherAddr.Bytes())
