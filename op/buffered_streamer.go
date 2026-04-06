@@ -15,7 +15,7 @@ import (
 // not great for the EspressoStreamer which wants to only progress forward
 // and not rewind.
 //
-// The general idea is to take advantage that we should b.readPos -= positionAdjustment a safe starting
+// The general idea is to take advantage that we should have a safe starting
 // position for the batches being reported to the streamer that is being
 // updated frequently.
 //
