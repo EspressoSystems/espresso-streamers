@@ -94,7 +94,7 @@ type BatchStreamer[B Batch] struct {
 	Log                      log.Logger
 	HotShotPollingInterval   time.Duration
 
-	// Batch number we're to give out next
+	// The batch position (L2 block number) of the next batch to be returned by the streamer
 	nextBatchPos uint64
 	// Position of the last safe batch, we can use it as the position to fallback when resetting
 	fallbackBatchPos uint64
