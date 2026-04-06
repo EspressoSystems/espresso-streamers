@@ -328,6 +328,39 @@ func TestBufferedStreamerPeek(t *testing.T) {
 	})
 }
 
+// TestBufferedStreamerReadPosBehindAdjustment verifies that when the safe batch position advances
+// past the current read position, the read position is reset to 0 (start of the trimmed buffer).
+func TestBufferedStreamerReadPosBehindAdjustment(t *testing.T) {
+	ctx := context.Background()
+	mockStreamer := &MockStreamer[BatchMock]{
+		createBatch: createBatchMock,
+	}
+	streamer := op.NewBufferedEspressoStreamer(mockStreamer)
+
+	require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 1}, 0, eth.BlockID{Number: 1}))
+
+	// Read 10 batches to populate the buffer (readPos advances to 10)
+	for i := uint64(1); i <= 10; i++ {
+		require.Equal(t, i, streamer.Next(ctx).Number())
+	}
+
+	// Reset so readPos goes back to 0
+	streamer.Reset()
+
+	// Advance readPos by consuming 2 batches from the buffer
+	require.Equal(t, uint64(1), streamer.Next(ctx).Number())
+	require.Equal(t, uint64(2), streamer.Next(ctx).Number())
+
+	// Refresh with safeBatchNumber=5: positionAdjustment=5 > readPos=2, so readPos resets to 0
+	// and the buffer is trimmed to start at batch #6.
+	require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 1}, 5, eth.BlockID{Number: 1}))
+
+	// The next batch should be #6 (first batch after the trimmed starting position)
+	next := streamer.Next(ctx)
+	require.NotNil(t, next)
+	require.Equal(t, uint64(6), next.Number())
+}
+
 // TestBufferedStreamerGetFallbackHotshotPos tests that GetFallbackHotshotPos delegates to the underlying streamer.
 func TestBufferedStreamerGetFallbackHotshotPos(t *testing.T) {
 	ctx := context.Background()

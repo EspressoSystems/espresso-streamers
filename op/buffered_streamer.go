@@ -15,7 +15,7 @@ import (
 // not great for the EspressoStreamer which wants to only progress forward
 // and not rewind.
 //
-// The general idea is to take advantage that we should have a safe starting
+// The general idea is to take advantage that we should b.readPos -= positionAdjustment a safe starting
 // position for the batches being reported to the streamer that is being
 // updated frequently.
 //
@@ -90,7 +90,11 @@ func (b *BufferedEspressoStreamer[B]) handleL2PositionUpdate(nextPosition uint64
 			}
 			b.batches = b.batches[positionAdjustment:]
 			if b.readPos >= positionAdjustment {
-				b.readPos -= positionAdjustment
+				if b.readPos >= positionAdjustment {
+					b.readPos -= positionAdjustment
+				} else {
+					b.readPos = 0
+				}
 			} else {
 				b.readPos = 0
 			}

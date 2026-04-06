@@ -1424,3 +1424,28 @@ func TestPeek(t *testing.T) {
 		require.Nil(t, streamer.Peek(ctx))
 	})
 }
+
+// TestUpdateReturnsErrorOnMaxUint64BlockHeight verifies that Update returns an error
+// when FetchLatestBlockHeight returns math.MaxUint64 (overflow guard).
+func TestUpdateReturnsErrorOnMaxUint64BlockHeight(t *testing.T) {
+	ctx := context.Background()
+
+	state, streamer := setupStreamerTesting(42, common.Address{})
+	state.LatestEspHeight = ^uint64(0) // math.MaxUint64
+
+	err := streamer.Update(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "overflows")
+}
+
+// TestFetchHotShotRangeRejectsZeroFinish verifies that fetchHotShotRange returns an error
+// when finish is 0.
+func TestFetchHotShotRangeRejectsZeroFinish(t *testing.T) {
+	ctx := context.Background()
+
+	_, streamer := setupStreamerTesting(42, common.Address{})
+
+	err := streamer.fetchHotShotRange(ctx, 0, 0)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "finish must be > 0")
+}
