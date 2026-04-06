@@ -79,7 +79,7 @@ type l1State struct {
 	// Block hash
 	hash common.Hash
 	// TEE batchers addresses for signature verification
-	teeBatchers []common.Address
+	authorizedBatchers []common.Address
 }
 
 type BatchStreamer[B Batch] struct {
@@ -250,13 +250,13 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 
 		state = l1State{
 			hash:        hash,
-			teeBatchers: []common.Address{espressoBatcher},
+			authorizedBatchers: []common.Address{espressoBatcher},
 		}
 
 		s.finalizedL1StateCache.Add(origin.Number, state)
 	}
 
-	if !slices.Contains(state.teeBatchers, batch.Signer()) {
+	if !slices.Contains(state.authorizedBatchers, batch.Signer()) {
 		s.Log.Info("Dropping batch with invalid TEE batcher", "batch", batch.Hash(), "signer", batch.Signer())
 		return BatchDrop
 	}
