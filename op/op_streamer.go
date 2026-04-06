@@ -249,7 +249,7 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 		}
 
 		state = l1State{
-			hash:        hash,
+			hash:               hash,
 			authorizedBatchers: []common.Address{espressoBatcher},
 		}
 
@@ -257,7 +257,7 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 	}
 
 	if !slices.Contains(state.authorizedBatchers, batch.Signer()) {
-		s.Log.Info("Dropping batch with invalid TEE batcher", "batch", batch.Hash(), "signer", batch.Signer())
+		s.Log.Info("Dropping batch with invalid espresso batcher", "batch", batch.Hash(), "signer", batch.Signer())
 		return BatchDrop
 	}
 
