@@ -22,7 +22,7 @@ import (
 const BatchBufferCapacity uint64 = 1024
 
 // DroppingBatchLogPrefix is the log message prefix used when dropping a batch.
-// 
+//
 // NOTE: It is referenced by the DroppingBatch constant in logmodule/log_keys.go of the
 // optimism-espresso-integration repo for log investigation. Any change here must be reflected
 // there too.
