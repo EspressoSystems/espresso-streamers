@@ -69,10 +69,10 @@ func TestResetAfterNewDoesNotSkipBatch(t *testing.T) {
 		batchAuthAddr,
 	)
 	require.NoError(t, err)
-	require.Equal(t, originBatchPos+1, streamer.BatchPos, "BatchPos should be originBatchPos+1 after New")
+	require.Equal(t, originBatchPos+1, streamer.nextBatchPos, "BatchPos should be originBatchPos+1 after New")
 
 	streamer.Reset()
-	require.Equal(t, originBatchPos+1, streamer.BatchPos, "BatchPos should still be originBatchPos+1 after Reset, not originBatchPos+2")
+	require.Equal(t, originBatchPos+1, streamer.nextBatchPos, "BatchPos should still be originBatchPos+1 after Reset, not originBatchPos+2")
 }
 
 // EspBlockAndNamespace is a struct that holds the height and namespace
@@ -985,7 +985,7 @@ func TestStreamerMultipleBatchesSameNumber(t *testing.T) {
 		require.Equal(t, uint64(1), batch.Number())
 
 		// BatchPos should have advanced to 2
-		require.Equal(t, uint64(2), streamer.BatchPos)
+		require.Equal(t, uint64(2), streamer.nextBatchPos)
 	})
 
 	t.Run("BatchPos does NOT advance when all candidates for batch number are invalid", func(t *testing.T) {
@@ -1020,7 +1020,7 @@ func TestStreamerMultipleBatchesSameNumber(t *testing.T) {
 		require.False(t, streamer.HasNext(ctx))
 
 		// BatchPos should still be 1 (NOT advanced)
-		require.Equal(t, uint64(1), streamer.BatchPos)
+		require.Equal(t, uint64(1), streamer.nextBatchPos)
 	})
 
 	t.Run("first valid batch returned when multiple valid candidates exist", func(t *testing.T) {
