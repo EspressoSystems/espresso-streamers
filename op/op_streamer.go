@@ -21,6 +21,13 @@ import (
 
 const BatchBufferCapacity uint64 = 1024
 
+// DroppingBatchLogPrefix is the log message prefix used when dropping a batch.
+// 
+// NOTE: It is referenced by the DroppingBatch constant in logmodule/log_keys.go of the
+// optimism-espresso-integration repo for log investigation. Any change here must be reflected
+// there too.
+const DroppingBatchLogPrefix = "Dropping batch"
+
 // Espresso light client bindings don't have an explicit name for this struct,
 // so we define it here to avoid spelling it out every time
 type FinalizedState = struct {
@@ -264,18 +271,12 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 	}
 
 	if !slices.Contains(state.authorizedBatchers, batch.Signer()) {
-		// NOTE: The message "Dropping batch" is referenced by the DroppingBatch constant in
-		// logmodule/log_keys.go of the optimism-espresso-integration repo, used for log
-		// investigation. Any change to this message must be reflected there too.
-		s.Log.Info("Dropping batch with invalid espresso batcher", "batch", batch.Hash(), "signer", batch.Signer())
+		s.Log.Info(DroppingBatchLogPrefix+" with invalid espresso batcher", "batch", batch.Hash(), "signer", batch.Signer())
 		return BatchDrop
 	}
 
 	if state.hash != origin.Hash {
-		// NOTE: The message "Dropping batch" is referenced by the DroppingBatch constant in
-		// logmodule/log_keys.go of the optimism-espresso-integration repo, used for log
-		// investigation. Any change to this message must be reflected there too.
-		s.Log.Warn("Dropping batch with invalid L1 origin hash")
+		s.Log.Warn(DroppingBatchLogPrefix + " with invalid L1 origin hash")
 		return BatchDrop
 	}
 	return BatchAccept
@@ -433,10 +434,7 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, transaction espressoCommon.Bytes) error {
 	batch, err := s.UnmarshalBatch(transaction)
 	if err != nil {
-		// NOTE: The message "Dropping batch" is referenced by the DroppingBatch constant in
-		// logmodule/log_keys.go of the optimism-espresso-integration repo, used for log
-		// investigation. Any change to this message must be reflected there too.
-		s.Log.Warn("Dropping batch with invalid transaction data", "error", err)
+		s.Log.Warn(DroppingBatchLogPrefix+" with invalid transaction data", "error", err)
 		return nil
 	}
 
@@ -444,10 +442,6 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 
 	switch validity {
 	case BatchDrop:
-		// NOTE: The message "Dropping batch" is referenced by the DroppingBatch constant in
-		// logmodule/log_keys.go of the optimism-espresso-integration repo, used for log
-		// investigation. Any change to this message must be reflected there too.
-		s.Log.Info("Dropping batch", batch)
 		return nil
 
 	case BatchPast:
@@ -483,10 +477,7 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 		// branches below are therefore exhaustive and falling through to return nil is correct.
 		err := s.BatchBuffer.Insert(*batch)
 		if errors.Is(err, ErrDuplicateBatch) {
-			// NOTE: The message "Dropping batch" is referenced by the DroppingBatch constant in
-			// logmodule/log_keys.go of the optimism-espresso-integration repo, used for log
-			// investigation. Any change to this message must be reflected there too.
-			s.Log.Warn("Dropping batch with duplicate hash")
+			s.Log.Warn(DroppingBatchLogPrefix + " with duplicate hash")
 		} else if errors.Is(err, ErrAtCapacity) {
 			return err
 		}
