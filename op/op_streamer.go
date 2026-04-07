@@ -264,11 +264,17 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 	}
 
 	if !slices.Contains(state.authorizedBatchers, batch.Signer()) {
+		// NOTE: The message "Dropping batch" is referenced by the DroppingBatch constant in
+		// logmodule/log_keys.go of the optimism-espresso-integration repo, used for log
+		// investigation. Any change to this message must be reflected there too.
 		s.Log.Info("Dropping batch with invalid espresso batcher", "batch", batch.Hash(), "signer", batch.Signer())
 		return BatchDrop
 	}
 
 	if state.hash != origin.Hash {
+		// NOTE: The message "Dropping batch" is referenced by the DroppingBatch constant in
+		// logmodule/log_keys.go of the optimism-espresso-integration repo, used for log
+		// investigation. Any change to this message must be reflected there too.
 		s.Log.Warn("Dropping batch with invalid L1 origin hash")
 		return BatchDrop
 	}
@@ -427,6 +433,9 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, transaction espressoCommon.Bytes) error {
 	batch, err := s.UnmarshalBatch(transaction)
 	if err != nil {
+		// NOTE: The message "Dropping batch" is referenced by the DroppingBatch constant in
+		// logmodule/log_keys.go of the optimism-espresso-integration repo, used for log
+		// investigation. Any change to this message must be reflected there too.
 		s.Log.Warn("Dropping batch with invalid transaction data", "error", err)
 		return nil
 	}
@@ -435,6 +444,9 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 
 	switch validity {
 	case BatchDrop:
+		// NOTE: The message "Dropping batch" is referenced by the DroppingBatch constant in
+		// logmodule/log_keys.go of the optimism-espresso-integration repo, used for log
+		// investigation. Any change to this message must be reflected there too.
 		s.Log.Info("Dropping batch", batch)
 		return nil
 
@@ -471,6 +483,9 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 		// branches below are therefore exhaustive and falling through to return nil is correct.
 		err := s.BatchBuffer.Insert(*batch)
 		if errors.Is(err, ErrDuplicateBatch) {
+			// NOTE: The message "Dropping batch" is referenced by the DroppingBatch constant in
+			// logmodule/log_keys.go of the optimism-espresso-integration repo, used for log
+			// investigation. Any change to this message must be reflected there too.
 			s.Log.Warn("Dropping batch with duplicate hash")
 		} else if errors.Is(err, ErrAtCapacity) {
 			return err
