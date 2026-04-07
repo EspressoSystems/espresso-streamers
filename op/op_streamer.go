@@ -202,6 +202,7 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 	// NOTE: be sure to update s.finalizedL1 before checking this condition and returning
 	if s.fallbackBatchPos == safeBatchNumber {
 		// This means everything is in sync, no state update needed
+		log.Info("Safe batch number is the same as fallback batch position, no reset needed", "safeBatchNumber", safeBatchNumber, "fallbackBatchPos", s.fallbackBatchPos)
 		return nil
 	}
 
@@ -216,11 +217,13 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 	// This generally means that safe batch number was updated by another batcher
 	if s.BatchPos <= s.fallbackBatchPos {
 		shouldReset = true
+		log.Info("Batch position is lagging behind the safe batch position, triggering reset", "BatchPos", s.BatchPos, "fallbackBatchPos", s.fallbackBatchPos)
 	}
 
 	if shouldReset {
 		s.Reset()
 	}
+	log.Info("Refreshed streamer state", "shouldReset", shouldReset, "BatchPos", s.BatchPos, "fallbackBatchPos", s.fallbackBatchPos, "hotShotPos", s.hotShotPos, "fallbackHotShotPos", s.fallbackHotShotPos)
 	return nil
 }
 
@@ -327,12 +330,13 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to fetch latest block height: %w", err)
 	}
+	log.Info("Fetched latest block height from Espresso", "currentBlockHeight", currentBlockHeight, "hotShotPos", s.hotShotPos)
 
 	// Fetch API implementation
 	for i := 0; ; i++ {
 		// Fetch more batches from HotShot if available.
 		start, finish := s.computeEspressoBlockHeightsRange(currentBlockHeight, HOTSHOT_BLOCK_FETCH_LIMIT)
-
+		log.Info("Computed HotShot block range to fetch", "start", start, "finish", finish)
 		if start >= finish || (start+1 == finish && i > 0) {
 			// If start is one less than our finish, then that means we
 			// already processed all of the blocks available to us.  We
@@ -347,11 +351,13 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 			// repeatedly processing it again and again.   So to catch
 			// this case, we check to see if start is equal to finish, after
 			// an initial iteration.
+			log.Info("No more HotShot blocks to fetch", "start", start, "finish", finish)
 			break
 		}
 
 		// Process the new batches fetched from Espresso
 		if err := s.fetchHotShotRange(ctx, start, finish); err != nil {
+			log.Info("Failed to fetch and process HotShot block range", "start", start, "finish", finish, "error", err)
 			return fmt.Errorf("failed to process hotshot range: %w", err)
 		}
 
@@ -365,18 +371,21 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 			// only fail to do this if there currently is no next batch
 			// currently available (or if we error while attempting to retrieve
 			// transactions from HotShot).
+			log.Info("Next batch is available for processing, exiting loop")
 			break
 		}
 	}
-
+	log.Info("Finished updating from Espresso", "BatchPos", s.BatchPos, "hotShotPos", s.hotShotPos, "fallbackHotShotPos", s.fallbackHotShotPos)
 	return nil
 }
 
 // Peek returns the next valid batch without consuming it.
 func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 	if s.HasNext(ctx) {
+		log.Info("Peeking next batch", "batch", s.headBatch)
 		return s.headBatch
 	}
+	log.Info("No next batch available for peeking")
 	return nil
 }
 
@@ -573,7 +582,7 @@ func (s *BatchStreamer[B]) confirmEspressoBlockHeight(safeL1Origin eth.BlockID) 
 	// position to this height, or we risk dipping below
 	// hotshot origin on reset.
 	if hotshotState.BlockHeight <= s.originHotShotPos {
-		s.Log.Debug("HotShot height at L1 Origin less than HotShot origin of the streamer, ignoring")
+		s.Log.Info("HotShot height at L1 Origin less than HotShot origin of the streamer, ignoring")
 		return shouldReset
 	}
 
