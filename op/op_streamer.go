@@ -197,6 +197,7 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 	s.FinalizedL1 = finalizedL1
 
 	s.RefreshSafeL1Origin(safeL1Origin)
+	log.Info("Refreshed safe L1 origin", "safeL1Origin", safeL1Origin, "finalizedL1", finalizedL1, "safeBatchNumber", safeBatchNumber, "fallBackBatchPos", s.fallbackBatchPos)
 
 	// NOTE: be sure to update s.finalizedL1 before checking this condition and returning
 	if s.fallbackBatchPos == safeBatchNumber {
