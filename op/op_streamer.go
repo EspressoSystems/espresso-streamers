@@ -216,15 +216,15 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 
 	// If BatchPos is lagging behind the safe batch Pos, we trigger a reset.
 	// This generally means that safe batch number was updated by another batcher
-	if s.BatchPos <= s.fallbackBatchPos {
+	if s.nextBatchPos <= s.fallbackBatchPos {
 		shouldReset = true
-		s.Log.Info("Batch position is lagging behind the safe batch position, triggering reset", "BatchPos", s.BatchPos, "fallbackBatchPos", s.fallbackBatchPos)
+		s.Log.Info("Batch position is lagging behind the safe batch position, triggering reset", "BatchPos", s.nextBatchPos, "fallbackBatchPos", s.fallbackBatchPos)
 	}
 
 	if shouldReset {
 		s.Reset()
 	}
-	s.Log.Info("Refreshed streamer state", "shouldReset", shouldReset, "BatchPos", s.BatchPos, "fallbackBatchPos", s.fallbackBatchPos, "hotShotPos", s.hotShotPos, "fallbackHotShotPos", s.fallbackHotShotPos)
+	s.Log.Info("Refreshed streamer state", "shouldReset", shouldReset, "BatchPos", s.nextBatchPos, "fallbackBatchPos", s.fallbackBatchPos, "hotShotPos", s.hotShotPos, "fallbackHotShotPos", s.fallbackHotShotPos)
 	return nil
 }
 
@@ -377,7 +377,7 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 			break
 		}
 	}
-	s.Log.Info("Finished updating from Espresso", "BatchPos", s.BatchPos, "hotShotPos", s.hotShotPos, "fallbackHotShotPos", s.fallbackHotShotPos)
+	s.Log.Info("Finished updating from Espresso", "BatchPos", s.nextBatchPos, "hotShotPos", s.hotShotPos, "fallbackHotShotPos", s.fallbackHotShotPos)
 	return nil
 }
 
