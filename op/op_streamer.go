@@ -149,6 +149,7 @@ func NewEspressoStreamer[B Batch](
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind BatchAuthenticator at %s: %w", batchAuthenticatorAddress, err)
 	}
+	log.Info("Batch authenticator address is", "addr", batchAuthenticatorAddress)
 
 	return &BatchStreamer[B]{
 		L1Client:                 l1Client,
