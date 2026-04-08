@@ -79,7 +79,7 @@ type l1State struct {
 	// Block hash
 	hash common.Hash
 	// TEE batchers addresses for signature verification
-	teeBatchers []common.Address
+	authorizedBatchers []common.Address
 }
 
 type BatchStreamer[B Batch] struct {
@@ -94,8 +94,8 @@ type BatchStreamer[B Batch] struct {
 	Log                      log.Logger
 	HotShotPollingInterval   time.Duration
 
-	// Batch number we're to give out next
-	BatchPos uint64
+	// The batch position (L2 block number) of the next batch to be returned by the streamer
+	nextBatchPos uint64
 	// Position of the last safe batch, we can use it as the position to fallback when resetting
 	fallbackBatchPos uint64
 	// HotShot block that was visited last
@@ -159,8 +159,8 @@ func NewEspressoStreamer[B Batch](
 		BatchAuthenticatorCaller: batchAuthenticatorCaller,
 		Log:                      log,
 		Namespace:                namespace,
-		// Internally, BatchPos is the position of the batch we are to give out next, hence the +1
-		BatchPos: originBatchPos + 1,
+		// Internally, nextBatchPos is the position of the batch we are to give out next, hence the +1
+		nextBatchPos: originBatchPos + 1,
 		// fallbackBatchPos represents the last safe batch, so no +1
 		fallbackBatchPos:      originBatchPos,
 		BatchBuffer:           NewBatchBuffer[B](BatchBufferCapacity),
@@ -177,7 +177,7 @@ func NewEspressoStreamer[B Batch](
 func (s *BatchStreamer[B]) Reset() {
 	s.Log.Info("reset espresso streamer", "hotshot pos", s.fallbackHotShotPos, "batch pos", s.fallbackBatchPos)
 	s.hotShotPos = s.fallbackHotShotPos
-	s.BatchPos = s.fallbackBatchPos + 1
+	s.nextBatchPos = s.fallbackBatchPos + 1
 	s.headBatch = nil
 	s.skipPos = math.MaxUint64
 	s.BatchBuffer.Clear()
@@ -232,6 +232,13 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 // block and the safe L1 origin.
 func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidity {
 
+	// Check cheaply whether this batch has already been buffered or finalized before
+	// making any L1 RPC calls.
+	if batch.Number() < s.nextBatchPos {
+		s.Log.Warn("Batch is older than next expected batch, skipping", "batchNr", batch.Number(), "nextBatchPos", s.nextBatchPos)
+		return BatchPast
+	}
+
 	// Make sure the finalized L1 block is initialized before checking the block number.
 	if s.FinalizedL1 == (eth.L1BlockRef{}) {
 		s.Log.Error("Finalized L1 block not initialized")
@@ -254,22 +261,22 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 			return BatchUndecided
 		}
 
-		teeBatcher, err := s.BatchAuthenticatorCaller.TeeBatcher(&bind.CallOpts{BlockNumber: blockNumber})
+		espressoBatcher, err := s.BatchAuthenticatorCaller.EspressoBatcher(&bind.CallOpts{BlockNumber: blockNumber})
 		if err != nil {
-			s.Log.Warn("Failed to fetch the TEE batcher address, pending resync", "error", err)
+			s.Log.Warn("Failed to fetch the espresso batcher address, pending resync", "error", err)
 			return BatchUndecided
 		}
 
 		state = l1State{
-			hash:        hash,
-			teeBatchers: []common.Address{teeBatcher},
+			hash:               hash,
+			authorizedBatchers: []common.Address{espressoBatcher},
 		}
 
 		s.finalizedL1StateCache.Add(origin.Number, state)
 	}
 
-	if !slices.Contains(state.teeBatchers, batch.Signer()) {
-		s.Log.Info("Dropping batch with invalid TEE batcher", "batch", batch.Hash(), "signer", batch.Signer())
+	if !slices.Contains(state.authorizedBatchers, batch.Signer()) {
+		s.Log.Info("Dropping batch with invalid espresso batcher", "batch", batch.Hash(), "signer", batch.Signer())
 		return BatchDrop
 	}
 
@@ -277,12 +284,6 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 		s.Log.Warn("Dropping batch with invalid L1 origin hash")
 		return BatchDrop
 	}
-	// Batch already buffered/finalized
-	if batch.Number() < s.BatchPos {
-		s.Log.Warn("Batch is older than current batchPos, skipping", "batchNr", batch.Number(), "batchPos", s.BatchPos)
-		return BatchPast
-	}
-
 	return BatchAccept
 }
 
@@ -391,7 +392,7 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 }
 
 // fetchHotShotRange is a helper method that will load all of the blocks from
-// Hotshot from start to finish, inclusive. It will process each block and
+// Hotshot from start (inclusive) to finish (exclusive). It will process each block and
 // update the batch buffer with any batches found in the block.
 // It will also update the hotShotPos to the last block processed, in order
 // to effectively keep track of the last block we have successfully fetched,
@@ -469,7 +470,7 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 
 	// If this is the batch we're supposed to give out next and we don't
 	// have any other candidates, put it in as the head batch
-	if (*batch).Number() == s.BatchPos && s.headBatch == nil {
+	if (*batch).Number() == s.nextBatchPos && s.headBatch == nil {
 		s.Log.Info("Setting batch as the head batch",
 			"hash", (*batch).Hash(),
 			"parentHash", header.ParentHash,
@@ -484,11 +485,12 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 			"parentHash", header.ParentHash,
 			"epochNum", header.Number,
 			"timestamp", header.Time)
+		// BatchBuffer.Insert returns only ErrDuplicateBatch or ErrAtCapacity; the two
+		// branches below are therefore exhaustive and falling through to return nil is correct.
 		err := s.BatchBuffer.Insert(*batch)
 		if errors.Is(err, ErrDuplicateBatch) {
 			s.Log.Warn("Dropping batch with duplicate hash")
-		}
-		if errors.Is(err, ErrAtCapacity) {
+		} else if errors.Is(err, ErrAtCapacity) {
 			return err
 		}
 	}
@@ -500,8 +502,8 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 func (s *BatchStreamer[B]) Next(ctx context.Context) *B {
 	// Is the next batch available?
 	if s.HasNext(ctx) {
-		// Current batch is going to be processed, update fallback batch position
-		s.BatchPos += 1
+		// Current batch is going to be processed, advance the next expected batch position
+		s.nextBatchPos += 1
 		head := s.headBatch
 		s.headBatch = nil
 		// If we have been skipping batches, now is the time
@@ -521,7 +523,7 @@ func (s *BatchStreamer[B]) HasNext(ctx context.Context) bool {
 	for {
 		if s.headBatch == nil {
 			nextBuffered := s.BatchBuffer.Peek()
-			if nextBuffered != nil && (*nextBuffered).Number() == s.BatchPos {
+			if nextBuffered != nil && (*nextBuffered).Number() == s.nextBatchPos {
 				s.headBatch = nextBuffered
 				s.BatchBuffer.Pop()
 			} else {
