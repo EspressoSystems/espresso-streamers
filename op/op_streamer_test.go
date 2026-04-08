@@ -1383,7 +1383,7 @@ func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
 
 		// originBatchPos=1 → BatchPos=2, fallbackBatchPos=1
 		state, streamer := setupStreamerTesting(namespace, batchAuthenticatorAddr)
-		require.Equal(t, uint64(2), streamer.BatchPos)
+		require.Equal(t, uint64(2), streamer.nextBatchPos)
 
 		// Simulate another batcher advancing safe batch to 10.
 		// safeBatchNumber(10) != fallbackBatchPos(1) → no early return.
@@ -1393,7 +1393,7 @@ func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
 		require.NoError(t, err)
 
 		// After reset: BatchPos = fallbackBatchPos + 1 = 11
-		require.Equal(t, safeBatchNumber+1, streamer.BatchPos,
+		require.Equal(t, safeBatchNumber+1, streamer.nextBatchPos,
 			"BatchPos should advance to safeBatchNumber+1 after reset")
 		require.Equal(t, safeBatchNumber, streamer.fallbackBatchPos)
 	})
@@ -1403,7 +1403,7 @@ func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
 
 		// originBatchPos=1 → BatchPos=2, fallbackBatchPos=1
 		state, streamer := setupStreamerTesting(namespace, batchAuthenticatorAddr)
-		require.Equal(t, uint64(2), streamer.BatchPos)
+		require.Equal(t, uint64(2), streamer.nextBatchPos)
 
 		// safeBatchNumber=2: equal to BatchPos.
 		// safeBatchNumber(2) != fallbackBatchPos(1) → no early return.
@@ -1413,7 +1413,7 @@ func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
 		require.NoError(t, err)
 
 		// After reset: BatchPos = fallbackBatchPos + 1 = 3
-		require.Equal(t, safeBatchNumber+1, streamer.BatchPos,
+		require.Equal(t, safeBatchNumber+1, streamer.nextBatchPos,
 			"BatchPos should advance to safeBatchNumber+1 after reset")
 		require.Equal(t, safeBatchNumber, streamer.fallbackBatchPos)
 	})
@@ -1423,16 +1423,16 @@ func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
 
 		// originBatchPos=4 → BatchPos=5, fallbackBatchPos=4
 		state, streamer := setupStreamerTesting(namespace, batchAuthenticatorAddr, 4)
-		require.Equal(t, uint64(5), streamer.BatchPos)
+		require.Equal(t, uint64(5), streamer.nextBatchPos)
 
-		streamer.BatchPos = 7
+		streamer.nextBatchPos = 7
 
 		safeBatchNumber := uint64(5)
 		err := streamer.Refresh(ctx, state.FinalizedL1, safeBatchNumber, state.SafeL2.L1Origin)
 		require.NoError(t, err)
 
 		// No reset should happen
-		require.Equal(t, uint64(7), streamer.BatchPos,
+		require.Equal(t, uint64(7), streamer.nextBatchPos,
 			"BatchPos should remain unchanged when it is ahead of safe batch number")
 		require.Equal(t, safeBatchNumber, streamer.fallbackBatchPos)
 	})

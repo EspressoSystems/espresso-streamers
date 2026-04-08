@@ -213,7 +213,7 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 
 	// If BatchPos is lagging behind the safe batch Pos, we trigger a reset.
 	// This generally means that safe batch number was updated by another batcher
-	if s.BatchPos <= s.fallbackBatchPos {
+	if s.nextBatchPos <= s.fallbackBatchPos {
 		shouldReset = true
 	}
 
