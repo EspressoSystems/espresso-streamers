@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
-	"github.com/ethereum/go-ethereum/log"
 )
 
 // BufferedEspressoStreamer is a wrapper around EspressoStreamerIFace that
@@ -66,7 +65,6 @@ func (b *BufferedEspressoStreamer[B]) Update(ctx context.Context) error {
 //  3. If the next position is the same as our starting batch position, then
 //     we do nothing, as we are already at the correct position.
 func (b *BufferedEspressoStreamer[B]) handleL2PositionUpdate(nextPosition uint64) {
-	log.Info("Coming inside handleL2PositionUpdate")
 	if nextPosition < b.startingBatchPos {
 		// If the next position is before the starting batch position,
 		// we need to reset the buffered streamer to ensure we don't
@@ -75,7 +73,6 @@ func (b *BufferedEspressoStreamer[B]) handleL2PositionUpdate(nextPosition uint64
 		b.startingBatchPos = nextPosition
 		b.batches = make([]*B, 0)
 		b.streamer.Reset()
-		log.Info("coming inside nextPosition < b.startingBatchPos, also called streamer.Reset", "b.readPos", b.readPos, "b.startingBatchPos", b.startingBatchPos)
 		return
 	}
 
@@ -102,17 +99,14 @@ func (b *BufferedEspressoStreamer[B]) handleL2PositionUpdate(nextPosition uint64
 			b.readPos = 0
 		}
 		b.startingBatchPos = nextPosition
-		log.Info("coming inside nextPosition > b.startingBatchPos", "b.readPos", b.readPos, "b.startingBatchPos", b.startingBatchPos)
 		return
 	}
-	log.Info("returning from handleL2PositionUpdate")
 }
 
 // RefreshSafeL1Origin updates the safe L1 origin for the buffered streamer.
 // This method attempts to safely handle the adjustment of the safeL1Origin
 // without needing to defer to the underlying streamer unless necessary.
 func (b *BufferedEspressoStreamer[B]) RefreshSafeL1Origin(safeL1Origin eth.BlockID) {
-	log.Info("Coming inside BufferedEspressoStreamer RefreshSafeL1Origin", "safeL1Origin", safeL1Origin, "b.currentSafeL1Origin", b.currentSafeL1Origin)
 	if safeL1Origin.Number < b.currentSafeL1Origin.Number {
 		// If the safeL1Origin is before the starting batch position, we need to
 		// reset the buffered streamer to ensure we don't miss any batches.
@@ -123,17 +117,14 @@ func (b *BufferedEspressoStreamer[B]) RefreshSafeL1Origin(safeL1Origin eth.Block
 		// we call underlying streamer's RefreshSafeL1Origin to ensure it is aware of
 		// the new safe L1 origin.
 		b.streamer.RefreshSafeL1Origin(safeL1Origin)
-		log.Info("coming inside safeL1Origin.Number < b.currentSafeL1Origin.Number, also called streamer.RefreshSafeL1Origin", "b.readPos", b.readPos, "b.startingBatchPos", b.startingBatchPos, "b.currentSafeL1Origin", b.currentSafeL1Origin)
 		return
 	}
 
 	b.currentSafeL1Origin = safeL1Origin
-	log.Info("coming inside safeL1Origin.Number >= b.currentSafeL1Origin.Number", "b.readPos", b.readPos, "b.startingBatchPos", b.startingBatchPos, "b.currentSafeL1Origin", b.currentSafeL1Origin)
 }
 
 // Refresh implements EspressoStreamerIFace
 func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockRef, safeBatchNumber uint64, safeL1Origin eth.BlockID) error {
-	log.Info("Coming inside Buffered espresso streamer refresh")
 	b.handleL2PositionUpdate(safeBatchNumber)
 	b.RefreshSafeL1Origin(safeL1Origin)
 
