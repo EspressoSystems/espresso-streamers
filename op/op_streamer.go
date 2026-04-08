@@ -284,6 +284,11 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 		s.Log.Warn("Dropping batch with invalid L1 origin hash")
 		return BatchDrop
 	}
+
+	if s.headBatch != nil && batch.Number() == (*s.headBatch).Number() && batch.Hash() == (*s.headBatch).Hash() {
+		s.Log.Info("Dropping duplicate of current head batch", "batchNr", batch.Number())
+		return BatchPast
+	}
 	return BatchAccept
 }
 
@@ -384,7 +389,7 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 // Peek returns the next valid batch without consuming it.
 func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 	if s.HasNext(ctx) {
-		s.Log.Info("Peeking next batch", "batch", s.headBatch)
+		s.Log.Info("Peeking next batch", "batch", (*s.headBatch).Number())
 		return s.headBatch
 	}
 	s.Log.Info("No next batch available for peeking")
