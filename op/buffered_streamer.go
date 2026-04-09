@@ -202,6 +202,26 @@ func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context) *B {
 	}
 }
 
+// Remove removes the exact batch from the local buffer if it exists.
+// readPos is set to min(readPos, batchOffset) where batchOffset is the
+// removed batch's position relative to startingBatchPos, so that the next
+// Peek or Next call returns the batch at that position.
+func (b *BufferedEspressoStreamer[B]) Remove(batch *B) {
+	for i, buf := range b.batches {
+		if buf == batch {
+			b.batches[i] = nil
+			b.batches = append(b.batches[:i], b.batches[i+1:]...)
+			batchPos := (*batch).Number()
+			if batchPos >= b.startingBatchPos {
+				if offset := batchPos - b.startingBatchPos; offset < b.readPos {
+					b.readPos = offset
+				}
+			}
+			return
+		}
+	}
+}
+
 // UnmarshalBatch implements EspressoStreamerIFace
 func (b *BufferedEspressoStreamer[B]) UnmarshalBatch(data []byte) (*B, error) {
 	// Delegate the unmarshalling to the underlying streamer
