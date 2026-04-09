@@ -149,6 +149,7 @@ func NewEspressoStreamer[B Batch](
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind BatchAuthenticator at %s: %w", batchAuthenticatorAddress, err)
 	}
+	log.Info("Batch authenticator address is", "addr", batchAuthenticatorAddress)
 
 	return &BatchStreamer[B]{
 		L1Client:                 l1Client,
@@ -197,10 +198,12 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 	s.FinalizedL1 = finalizedL1
 
 	s.RefreshSafeL1Origin(safeL1Origin)
+	s.Log.Info("Refreshed safe L1 origin", "safeL1Origin", safeL1Origin, "finalizedL1", finalizedL1, "safeBatchNumber", safeBatchNumber, "fallBackBatchPos", s.fallbackBatchPos)
 
 	// NOTE: be sure to update s.finalizedL1 before checking this condition and returning
 	if s.fallbackBatchPos == safeBatchNumber {
 		// This means everything is in sync, no state update needed
+		s.Log.Info("Safe batch number is the same as fallback batch position, no reset needed", "safeBatchNumber", safeBatchNumber, "fallbackBatchPos", s.fallbackBatchPos)
 		return nil
 	}
 
@@ -215,11 +218,13 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 	// This generally means that safe batch number was updated by another batcher
 	if s.nextBatchPos <= s.fallbackBatchPos {
 		shouldReset = true
+		s.Log.Info("Batch position is lagging behind the safe batch position, triggering reset", "BatchPos", s.nextBatchPos, "fallbackBatchPos", s.fallbackBatchPos)
 	}
 
 	if shouldReset {
 		s.Reset()
 	}
+	s.Log.Info("Refreshed streamer state", "shouldReset", shouldReset, "BatchPos", s.nextBatchPos, "fallbackBatchPos", s.fallbackBatchPos, "hotShotPos", s.hotShotPos, "fallbackHotShotPos", s.fallbackHotShotPos)
 	return nil
 }
 
@@ -327,12 +332,13 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to fetch latest block height: %w", err)
 	}
+	s.Log.Info("Fetched latest block height from Espresso", "currentBlockHeight", currentBlockHeight, "hotShotPos", s.hotShotPos)
 
 	// Fetch API implementation
 	for i := 0; ; i++ {
 		// Fetch more batches from HotShot if available.
 		start, finish := s.computeEspressoBlockHeightsRange(currentBlockHeight, HOTSHOT_BLOCK_FETCH_LIMIT)
-
+		s.Log.Info("Computed HotShot block range to fetch", "start", start, "finish", finish)
 		if start >= finish || (start+1 == finish && i > 0) {
 			// If start is one less than our finish, then that means we
 			// already processed all of the blocks available to us.  We
@@ -347,11 +353,13 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 			// repeatedly processing it again and again.   So to catch
 			// this case, we check to see if start is equal to finish, after
 			// an initial iteration.
+			s.Log.Info("No more HotShot blocks to fetch", "start", start, "finish", finish)
 			break
 		}
 
 		// Process the new batches fetched from Espresso
 		if err := s.fetchHotShotRange(ctx, start, finish); err != nil {
+			s.Log.Info("Failed to fetch and process HotShot block range", "start", start, "finish", finish, "error", err)
 			return fmt.Errorf("failed to process hotshot range: %w", err)
 		}
 
@@ -365,18 +373,21 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 			// only fail to do this if there currently is no next batch
 			// currently available (or if we error while attempting to retrieve
 			// transactions from HotShot).
+			s.Log.Info("Next batch is available for processing, exiting loop")
 			break
 		}
 	}
-
+	s.Log.Info("Finished updating from Espresso", "BatchPos", s.nextBatchPos, "hotShotPos", s.hotShotPos, "fallbackHotShotPos", s.fallbackHotShotPos)
 	return nil
 }
 
 // Peek returns the next valid batch without consuming it.
 func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 	if s.HasNext(ctx) {
+		s.Log.Info("Peeking next batch", "batch", (*s.headBatch).Number())
 		return s.headBatch
 	}
+	s.Log.Info("No next batch available for peeking")
 	return nil
 }
 
@@ -453,6 +464,13 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 		s.Log.Warn("Inserting undecided batch", "batch", (*batch).Hash())
 
 	case BatchAccept:
+	}
+
+	// Drop batches that duplicate the current head batch position to prevent
+	// stale entries from accumulating in the buffer and blocking progression.
+	if s.headBatch != nil && (*batch).Number() == (*s.headBatch).Number() && (*batch).Hash() == (*s.headBatch).Hash() {
+		s.Log.Info("Dropping duplicate of current head batch", "batchNr", (*batch).Number())
+		return nil
 	}
 
 	header := (*batch).Header()
