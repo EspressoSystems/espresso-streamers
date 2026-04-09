@@ -384,7 +384,7 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 // Peek returns the next valid batch without consuming it.
 func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 	if s.HasNext(ctx) {
-		s.Log.Info("Peeking next batch", "batch", s.headBatch)
+		s.Log.Info("Peeking next batch", "batch", (*s.headBatch).Number())
 		return s.headBatch
 	}
 	s.Log.Info("No next batch available for peeking")
@@ -464,6 +464,13 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 		s.Log.Warn("Inserting undecided batch", "batch", (*batch).Hash())
 
 	case BatchAccept:
+	}
+
+	// Drop batches that duplicate the current head batch position to prevent
+	// stale entries from accumulating in the buffer and blocking progression.
+	if s.headBatch != nil && (*batch).Number() == (*s.headBatch).Number() && (*batch).Hash() == (*s.headBatch).Hash() {
+		s.Log.Info("Dropping duplicate of current head batch", "batchNr", (*batch).Number())
+		return nil
 	}
 
 	header := (*batch).Header()
