@@ -334,6 +334,9 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to fetch latest block height: %w", err)
 	}
+	if currentBlockHeight == math.MaxUint64 {
+		return fmt.Errorf("espresso block height overflows uint64")
+	}
 
 	// Fetch API implementation
 	for i := 0; ; i++ {
@@ -394,6 +397,10 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 // to effectively keep track of the last block we have successfully fetched,
 // and therefore processed from Hotshot.
 func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish uint64) error {
+	if finish == 0 {
+		return fmt.Errorf("fetchHotShotRange: finish must be > 0")
+	}
+
 	// Process the new batches fetched from Espresso
 	s.Log.Trace("Fetching HotShot block range", "start", start, "finish", finish)
 
