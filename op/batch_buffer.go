@@ -113,3 +113,15 @@ func (b *BatchBuffer[B]) Pop() *B {
 
 	return &batch
 }
+
+// RemoveByHash removes the first batch with the given hash from the buffer.
+// Returns true if a batch was removed, false if not found.
+func (b *BatchBuffer[B]) RemoveByHash(hash common.Hash) bool {
+	for i, batch := range b.batches {
+		if batch.Hash() == hash {
+			b.batches = slices.Delete(b.batches, i, i+1)
+			return true
+		}
+	}
+	return false
+}

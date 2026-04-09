@@ -50,6 +50,12 @@ type EspressoStreamer[B Batch] interface {
 	// good safe block position there as well.
 	Reset()
 
+	// Remove removes a batch that caused a reorg from the streamer. The
+	// streamer reverts its position to that batch's block number so the
+	// new-fork version of the block will be re-read from HotShot. hotShotPos
+	// is preserved so old-fork blocks are not re-scanned.
+	Remove(batch *B)
+
 	// UnmarshalBatch is a convenience method that allows the caller to
 	// attempt to unmarshal a batch from the provided byte slice.
 	UnmarshalBatch(b []byte) (*B, error)
