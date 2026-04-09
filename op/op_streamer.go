@@ -457,6 +457,13 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 
 	header := (*batch).Header()
 
+	// Drop batches that duplicate the current head batch position to prevent
+	// stale entries from accumulating in the buffer and blocking progression.
+	if s.headBatch != nil && (*batch).Number() == (*s.headBatch).Number() && (*batch).Hash() == (*s.headBatch).Hash() {
+		s.Log.Info("Dropping duplicate of current head batch", "batchNr", (*batch).Number())
+		return nil
+	}
+
 	// If this is the batch we're supposed to give out next and we don't
 	// have any other candidates, put it in as the head batch
 	if (*batch).Number() == s.nextBatchPos && s.headBatch == nil {

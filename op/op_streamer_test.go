@@ -1497,3 +1497,38 @@ func TestPeek(t *testing.T) {
 		require.Nil(t, streamer.Peek(ctx))
 	})
 }
+
+// TestDuplicateHeadBatchDropped verifies that a batch whose Number and Hash
+// match the current headBatch is silently dropped and does not block progression.
+func TestDuplicateHeadBatchDropped(t *testing.T) {
+	namespace := uint64(42)
+	chainID := big.NewInt(int64(namespace))
+	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSigner := chainSignerFactory(chainID, common.Address{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	state, streamer := setupStreamerTesting(namespace, signerAddress)
+	rng := rand.New(rand.NewSource(11))
+
+	syncStatus := state.SyncStatus()
+	require.NoError(t, streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin))
+
+	_, _, _, espTxn1 := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, 1, chainSigner)
+	state.AddEspressoTransactionData(0, namespace, espTxn1)
+	// duplicate at different height
+	state.AddEspressoTransactionData(1, namespace, espTxn1)
+
+	_, _, _, espTxn2 := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, 2, chainSigner)
+	state.AddEspressoTransactionData(2, namespace, espTxn2)
+
+	require.NoError(t, streamer.Update(ctx))
+
+	require.True(t, streamer.HasNext(ctx))
+	require.Equal(t, uint64(1), streamer.Next(ctx).Number())
+
+	require.True(t, streamer.HasNext(ctx))
+	require.Equal(t, uint64(2), streamer.Next(ctx).Number())
+}
