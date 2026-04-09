@@ -188,6 +188,7 @@ func (s *BatchStreamer[B]) Reset() {
 func (s *BatchStreamer[B]) Remove(batch *B) {
 	batchPos := (*batch).Number()
 	batchHash := (*batch).Hash()
+	blockHash := (*batch).Header().Hash()
 	removed := s.BatchBuffer.RemoveByHash(batchHash)
 	s.headBatch = nil
 
@@ -196,6 +197,7 @@ func (s *BatchStreamer[B]) Remove(batch *B) {
 		"batchHash", batchHash,
 		"foundInBuffer", removed,
 		"nextBatchPos", s.nextBatchPos,
+		"blockHash", blockHash,
 	)
 	for i := 0; i < s.BatchBuffer.Len(); i++ {
 		b := s.BatchBuffer.Get(i)

@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 type BatchValidity uint8
@@ -118,6 +119,7 @@ func (b *BatchBuffer[B]) Pop() *B {
 // Returns true if a batch was removed, false if not found.
 func (b *BatchBuffer[B]) RemoveByHash(hash common.Hash) bool {
 	for i, batch := range b.batches {
+		log.Info("hash", "l", batch.Hash(), "r", hash)
 		if batch.Hash() == hash {
 			b.batches = slices.Delete(b.batches, i, i+1)
 			return true
