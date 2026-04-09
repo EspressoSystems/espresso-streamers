@@ -182,6 +182,26 @@ func (s *BatchStreamer[B]) Reset() {
 	s.BatchBuffer.Clear()
 }
 
+// PartialReset resets the batch position and clears the BatchBuffer without
+// rewinding the HotShot scan position.
+//
+// After a sequencer reorg, the block-queueing loop re-posts new-fork blocks
+// to Espresso at HotShot positions beyond the current hotShotPos. By keeping
+// hotShotPos in place, the streamer will naturally encounter those new-fork
+// blocks as it continues scanning forward, rather than re-reading old-fork
+// blocks that appear at earlier HotShot positions.
+func (s *BatchStreamer[B]) PartialReset() {
+	s.Log.Info("partial reset espresso streamer",
+		"hotShotPos", s.hotShotPos,
+		"oldNextBatchPos", s.nextBatchPos,
+		"newNextBatchPos", s.fallbackBatchPos+1,
+	)
+	s.nextBatchPos = s.fallbackBatchPos + 1
+	s.headBatch = nil
+	s.skipPos = math.MaxUint64
+	s.BatchBuffer.Clear()
+}
+
 // RefreshSafeL1Origin is a convenience method that allows us to update the
 // safe L1 origin of the Streamer. It will confirm the Espresso Block Height
 // and reset the state if necessary.

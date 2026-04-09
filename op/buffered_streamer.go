@@ -173,6 +173,39 @@ func (b *BufferedEspressoStreamer[B]) Reset() {
 	b.readPos = 0
 }
 
+// FullReset clears the local buffer and partially resets the underlying
+// streamer: it resets the batch position to the safe fallback without
+// rewinding the HotShot scan position.
+//
+// After a sequencer reorg, the block-queueing loop will re-post new-fork
+// blocks to Espresso at HotShot positions beyond the current scan head.
+// By preserving hotShotPos, the underlying streamer will encounter those
+// re-posted blocks as it continues scanning forward, rather than re-reading
+// old-fork blocks that appear at earlier HotShot positions.
+func (b *BufferedEspressoStreamer[B]) FullReset() {
+	log.Info("buffered streamer full reset",
+		"startingBatchPos", b.startingBatchPos,
+		"readPos", b.readPos,
+		"bufferedBatches", len(b.batches),
+	)
+	b.readPos = 0
+	b.startingBatchPos = 0
+	b.batches = make([]*B, 0)
+	b.hasDelivered = false
+	b.lastDeliveredPos = 0
+
+	// Partially reset the underlying streamer without rewinding hotShotPos.
+	// Falls back to a full Reset() if the underlying streamer does not support PartialReset.
+	type partialResetter interface {
+		PartialReset()
+	}
+	if pr, ok := b.streamer.(partialResetter); ok {
+		pr.PartialReset()
+	} else {
+		b.streamer.Reset()
+	}
+}
+
 // HasNext implements EspressoStreamerIFace
 //
 // It checks to see if there are any batches left to read in its local buffer.
