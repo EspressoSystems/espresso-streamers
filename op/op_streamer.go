@@ -486,6 +486,7 @@ func (s *BatchStreamer[B]) Next(ctx context.Context) *B {
 	if s.HasNext(ctx) {
 		// Current batch is going to be processed, advance the next expected batch position
 		s.nextBatchPos += 1
+		s.Log.Info("batch position advanced", "newNextBatchPos", s.nextBatchPos, "batchNr", (*s.headBatch).Number(), "batchHash", (*s.headBatch).Hash())
 		head := s.headBatch
 		s.headBatch = nil
 		// If we have been skipping batches, now is the time
