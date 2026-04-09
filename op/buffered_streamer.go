@@ -34,13 +34,6 @@ type BufferedEspressoStreamer[B Batch] struct {
 
 	startingBatchPos    uint64
 	currentSafeL1Origin eth.BlockID
-
-	// lastDeliveredPos is the batch number of the last batch returned by Next.
-	// Used to prevent handleL2PositionUpdate from pruning past what the
-	// consumer has actually received, which would cause the underlying streamer
-	// to skip batches the channel manager still needs.
-	lastDeliveredPos uint64
-	hasDelivered     bool
 }
 
 // Compile time assertion to ensure BufferedEspressoStreamer implements
@@ -77,12 +70,6 @@ func (b *BufferedEspressoStreamer[B]) handleL2PositionUpdate(nextPosition uint64
 		// If the next position is before the starting batch position,
 		// we need to reset the buffered streamer to ensure we don't
 		// miss any batches.
-		log.Info("buffered streamer resetting: safe position moved backwards",
-			"nextPosition", nextPosition,
-			"startingBatchPos", b.startingBatchPos,
-			"readPos", b.readPos,
-			"bufferedBatches", len(b.batches),
-		)
 		b.readPos = 0
 		b.startingBatchPos = nextPosition
 		b.batches = make([]*B, 0)
@@ -95,29 +82,7 @@ func (b *BufferedEspressoStreamer[B]) handleL2PositionUpdate(nextPosition uint64
 		// we no longer will need to refer to older batches.  So instead, we
 		// will want to adjust the buffer, and read position based on the
 		// new nextPosition.
-		//
-		// However, we must not prune past what we have actually delivered to
-		// the consumer. If the safe L2 head jumps ahead of what the consumer
-		// has processed, pruning to that position would cause the underlying
-		// streamer to skip batches the channel manager still needs.
-		pruneTarget := nextPosition
-		if b.hasDelivered && b.lastDeliveredPos+1 < pruneTarget {
-			log.Info("buffered streamer capping prune target to last delivered position",
-				"nextPosition", nextPosition,
-				"lastDeliveredPos", b.lastDeliveredPos,
-				"cappedPruneTarget", b.lastDeliveredPos+1,
-			)
-			pruneTarget = b.lastDeliveredPos + 1
-		}
-
-		log.Info("buffered streamer advancing",
-			"startingBatchPos", b.startingBatchPos,
-			"pruneTarget", pruneTarget,
-			"readPos", b.readPos,
-			"bufferedBatches", len(b.batches),
-		)
-
-		positionAdjustment := pruneTarget - b.startingBatchPos
+		positionAdjustment := nextPosition - b.startingBatchPos
 		if positionAdjustment <= uint64(len(b.batches)) {
 			// Nil out pointers to allow garbage collection
 			for i := 0; i < int(positionAdjustment); i++ {
@@ -133,7 +98,7 @@ func (b *BufferedEspressoStreamer[B]) handleL2PositionUpdate(nextPosition uint64
 			b.batches = nil
 			b.readPos = 0
 		}
-		b.startingBatchPos = pruneTarget
+		b.startingBatchPos = nextPosition
 		return
 	}
 }
@@ -173,39 +138,6 @@ func (b *BufferedEspressoStreamer[B]) Reset() {
 	b.readPos = 0
 }
 
-// FullReset clears the local buffer and partially resets the underlying
-// streamer: it resets the batch position to the safe fallback without
-// rewinding the HotShot scan position.
-//
-// After a sequencer reorg, the block-queueing loop will re-post new-fork
-// blocks to Espresso at HotShot positions beyond the current scan head.
-// By preserving hotShotPos, the underlying streamer will encounter those
-// re-posted blocks as it continues scanning forward, rather than re-reading
-// old-fork blocks that appear at earlier HotShot positions.
-func (b *BufferedEspressoStreamer[B]) FullReset() {
-	log.Info("buffered streamer full reset",
-		"startingBatchPos", b.startingBatchPos,
-		"readPos", b.readPos,
-		"bufferedBatches", len(b.batches),
-	)
-	b.readPos = 0
-	b.startingBatchPos = 0
-	b.batches = make([]*B, 0)
-	b.hasDelivered = false
-	b.lastDeliveredPos = 0
-
-	// Partially reset the underlying streamer without rewinding hotShotPos.
-	// Falls back to a full Reset() if the underlying streamer does not support PartialReset.
-	type partialResetter interface {
-		PartialReset()
-	}
-	if pr, ok := b.streamer.(partialResetter); ok {
-		pr.PartialReset()
-	} else {
-		b.streamer.Reset()
-	}
-}
-
 // HasNext implements EspressoStreamerIFace
 //
 // It checks to see if there are any batches left to read in its local buffer.
@@ -229,8 +161,6 @@ func (b *BufferedEspressoStreamer[B]) Next(ctx context.Context) *B {
 		// If we have a batch in the buffer, return it
 		batch := b.batches[b.readPos]
 		b.readPos++
-		b.lastDeliveredPos = (*batch).Number()
-		b.hasDelivered = true
 		return batch
 	}
 
@@ -246,8 +176,6 @@ func (b *BufferedEspressoStreamer[B]) Next(ctx context.Context) *B {
 		if (*batch).Number() >= b.startingBatchPos {
 			b.batches = append(b.batches, batch)
 			b.readPos++
-			b.lastDeliveredPos = (*batch).Number()
-			b.hasDelivered = true
 			return batch
 		}
 	}
