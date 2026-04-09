@@ -457,7 +457,9 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 			"hash", (*batch).Hash(),
 			"parentHash", header.ParentHash,
 			"epochNum", header.Number,
-			"timestamp", header.Time)
+			"timestamp", header.Time,
+			"blockNr", (*batch).Number(),
+			"hash", (*batch).Header().Hash())
 		s.headBatch = batch
 	} else {
 		// Otherwise, try to buffer it. If the buffer is full, forward the error up to record
@@ -466,7 +468,9 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 			"hash", (*batch).Hash(),
 			"parentHash", header.ParentHash,
 			"epochNum", header.Number,
-			"timestamp", header.Time)
+			"timestamp", header.Time,
+			"blockNr", (*batch).Number(),
+			"hash", (*batch).Header().Hash())
 		// BatchBuffer.Insert returns only ErrDuplicateBatch or ErrAtCapacity; the two
 		// branches below are therefore exhaustive and falling through to return nil is correct.
 		err := s.BatchBuffer.Insert(*batch)
