@@ -210,6 +210,13 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 	shouldReset = shouldReset || (s.fallbackHotShotPos > s.hotShotPos)
 
 	s.fallbackBatchPos = safeBatchNumber
+
+	// If BatchPos is lagging behind the safe batch Pos, we trigger a reset.
+	// This generally means that safe batch number was updated by another batcher
+	if s.nextBatchPos <= s.fallbackBatchPos {
+		shouldReset = true
+	}
+
 	if shouldReset {
 		s.Reset()
 	}
@@ -567,7 +574,7 @@ func (s *BatchStreamer[B]) confirmEspressoBlockHeight(safeL1Origin eth.BlockID) 
 	// position to this height, or we risk dipping below
 	// hotshot origin on reset.
 	if hotshotState.BlockHeight <= s.originHotShotPos {
-		s.Log.Info("HotShot height at L1 Origin less than HotShot origin of the streamer, ignoring")
+		s.Log.Debug("HotShot height at L1 Origin less than HotShot origin of the streamer, ignoring")
 		return shouldReset
 	}
 
