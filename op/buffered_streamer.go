@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 // BufferedEspressoStreamer is a wrapper around EspressoStreamerIFace that
@@ -212,11 +213,16 @@ func (b *BufferedEspressoStreamer[B]) Remove(batch *B) {
 			b.batches[i] = nil
 			b.batches = append(b.batches[:i], b.batches[i+1:]...)
 			batchPos := (*batch).Number()
+			log.Info("removed batch", "pos", batchPos, "hash", (*batch).Hash(), "readPosBefore", b.readPos)
+			if i < len(b.batches) {
+				log.Info("next batch in buffer", "pos", (*b.batches[i]).Number(), "hash", (*b.batches[i]).Hash())
+			}
 			if batchPos >= b.startingBatchPos {
 				if offset := batchPos - b.startingBatchPos; offset < b.readPos {
 					b.readPos = offset
 				}
 			}
+			log.Info("readPos after removal", "readPosAfter", b.readPos)
 			return
 		}
 	}
