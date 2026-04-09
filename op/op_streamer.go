@@ -485,7 +485,7 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 		return nil
 
 	case BatchPast:
-		s.Log.Info("Batch already processed. Skipping", "batch", (*batch).Number(), (*batch).Header().Hash())
+		s.Log.Info("Batch already processed. Skipping", "batch", (*batch).Number(), "hash", (*batch).Header().Hash())
 		return nil
 
 	case BatchUndecided:
