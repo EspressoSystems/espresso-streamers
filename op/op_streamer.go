@@ -182,29 +182,28 @@ func (s *BatchStreamer[B]) Reset() {
 	s.BatchBuffer.Clear()
 }
 
-// Remove removes a batch from the BatchBuffer if it is present, mirroring
-// BufferedEspressoStreamer.Remove. By the time ErrReorg fires the batch has
-// typically already been consumed by Next() so it won't be in the buffer,
-// but any duplicate entry with the same hash is cleaned up.
+// Remove drops the old-fork batch from the streamer so that the new-fork
+// version will be re-read from HotShot. headBatch is cleared; nextBatchPos
+// is unchanged because the caller used Peek (not Next) before calling Remove.
 func (s *BatchStreamer[B]) Remove(batch *B) {
 	batchPos := (*batch).Number()
 	batchHash := (*batch).Hash()
 	removed := s.BatchBuffer.RemoveByHash(batchHash)
+	s.headBatch = nil
+
 	s.Log.Info("removed batch from streamer",
 		"pos", batchPos,
 		"batchHash", batchHash,
 		"foundInBuffer", removed,
 		"nextBatchPos", s.nextBatchPos,
 	)
-	if removed {
-		for i := 0; i < s.BatchBuffer.Len(); i++ {
-			b := s.BatchBuffer.Get(i)
-			s.Log.Info("batch buffer after remove",
-				"index", i,
-				"blockNr", (*b).Number(),
-				"blockHash", (*b).Header().Hash(),
-			)
-		}
+	for i := 0; i < s.BatchBuffer.Len(); i++ {
+		b := s.BatchBuffer.Get(i)
+		s.Log.Info("batch buffer after remove",
+			"index", i,
+			"blockNr", (*b).Number(),
+			"blockHash", (*b).Header().Hash(),
+		)
 	}
 }
 
