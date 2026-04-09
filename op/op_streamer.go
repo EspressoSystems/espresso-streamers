@@ -21,6 +21,13 @@ import (
 
 const BatchBufferCapacity uint64 = 1024
 
+// DroppingBatchLogPrefix is the log message prefix used when dropping a batch.
+//
+// NOTE: It is referenced by the DroppingBatch constant in logmodule/log_keys.go of the
+// optimism-espresso-integration repo for log investigation. Any change here must be reflected
+// there too.
+const DroppingBatchLogPrefix = "Dropping batch"
+
 // Espresso light client bindings don't have an explicit name for this struct,
 // so we define it here to avoid spelling it out every time
 type FinalizedState = struct {
@@ -94,8 +101,8 @@ type BatchStreamer[B Batch] struct {
 	Log                      log.Logger
 	HotShotPollingInterval   time.Duration
 
-	// Batch number we're to give out next
-	BatchPos uint64
+	// The batch position (L2 block number) of the next batch to be returned by the streamer
+	nextBatchPos uint64
 	// Position of the last safe batch, we can use it as the position to fallback when resetting
 	fallbackBatchPos uint64
 	// HotShot block that was visited last
@@ -158,8 +165,8 @@ func NewEspressoStreamer[B Batch](
 		BatchAuthenticatorCaller: batchAuthenticatorCaller,
 		Log:                      log,
 		Namespace:                namespace,
-		// Internally, BatchPos is the position of the batch we are to give out next, hence the +1
-		BatchPos: originBatchPos + 1,
+		// Internally, nextBatchPos is the position of the batch we are to give out next, hence the +1
+		nextBatchPos: originBatchPos + 1,
 		// fallbackBatchPos represents the last safe batch, so no +1
 		fallbackBatchPos:      originBatchPos,
 		BatchBuffer:           NewBatchBuffer[B](BatchBufferCapacity),
@@ -176,7 +183,7 @@ func NewEspressoStreamer[B Batch](
 func (s *BatchStreamer[B]) Reset() {
 	s.Log.Info("reset espresso streamer", "hotshot pos", s.fallbackHotShotPos, "batch pos", s.fallbackBatchPos)
 	s.hotShotPos = s.fallbackHotShotPos
-	s.BatchPos = s.fallbackBatchPos + 1
+	s.nextBatchPos = s.fallbackBatchPos + 1
 	s.headBatch = nil
 	s.skipPos = math.MaxUint64
 	s.BatchBuffer.Clear()
@@ -210,6 +217,13 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 	shouldReset = shouldReset || (s.fallbackHotShotPos > s.hotShotPos)
 
 	s.fallbackBatchPos = safeBatchNumber
+
+	// If BatchPos is lagging behind the safe batch Pos, we trigger a reset.
+	// This generally means that safe batch number was updated by another batcher
+	if s.nextBatchPos <= s.fallbackBatchPos {
+		shouldReset = true
+	}
+
 	if shouldReset {
 		s.Reset()
 	}
@@ -219,6 +233,13 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 // CheckBatch checks the validity of the given batch against the finalized L1
 // block and the safe L1 origin.
 func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidity {
+
+	// Check cheaply whether this batch has already been buffered or finalized before
+	// making any L1 RPC calls.
+	if batch.Number() < s.nextBatchPos {
+		s.Log.Warn("Batch is older than next expected batch, skipping", "batchNr", batch.Number(), "nextBatchPos", s.nextBatchPos)
+		return BatchPast
+	}
 
 	// Make sure the finalized L1 block is initialized before checking the block number.
 	if s.FinalizedL1 == (eth.L1BlockRef{}) {
@@ -257,20 +278,14 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 	}
 
 	if !slices.Contains(state.authorizedBatchers, batch.Signer()) {
-		s.Log.Info("Dropping batch with invalid espresso batcher", "batch", batch.Hash(), "signer", batch.Signer())
+		s.Log.Info(DroppingBatchLogPrefix+" with invalid espresso batcher", "batch", batch.Hash(), "signer", batch.Signer())
 		return BatchDrop
 	}
 
 	if state.hash != origin.Hash {
-		s.Log.Warn("Dropping batch with invalid L1 origin hash")
+		s.Log.Warn(DroppingBatchLogPrefix + " with invalid L1 origin hash")
 		return BatchDrop
 	}
-	// Batch already buffered/finalized
-	if batch.Number() < s.BatchPos {
-		s.Log.Warn("Batch is older than current batchPos, skipping", "batchNr", batch.Number(), "batchPos", s.BatchPos)
-		return BatchPast
-	}
-
 	return BatchAccept
 }
 
@@ -376,7 +391,7 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 }
 
 // fetchHotShotRange is a helper method that will load all of the blocks from
-// Hotshot from start to finish, inclusive. It will process each block and
+// Hotshot from start (inclusive) to finish (exclusive). It will process each block and
 // update the batch buffer with any batches found in the block.
 // It will also update the hotShotPos to the last block processed, in order
 // to effectively keep track of the last block we have successfully fetched,
@@ -433,7 +448,7 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, transaction espressoCommon.Bytes) error {
 	batch, err := s.UnmarshalBatch(transaction)
 	if err != nil {
-		s.Log.Warn("Dropping batch with invalid transaction data", "error", err)
+		s.Log.Warn(DroppingBatchLogPrefix+" with invalid transaction data", "error", err)
 		return nil
 	}
 
@@ -441,7 +456,6 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 
 	switch validity {
 	case BatchDrop:
-		s.Log.Info("Dropping batch", batch)
 		return nil
 
 	case BatchPast:
@@ -456,9 +470,16 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 
 	header := (*batch).Header()
 
+	// Drop batches that duplicate the current head batch position to prevent
+	// stale entries from accumulating in the buffer and blocking progression.
+	if s.headBatch != nil && (*batch).Number() == (*s.headBatch).Number() && (*batch).Hash() == (*s.headBatch).Hash() {
+		s.Log.Info("Dropping duplicate of current head batch", "batchNr", (*batch).Number())
+		return nil
+	}
+
 	// If this is the batch we're supposed to give out next and we don't
 	// have any other candidates, put it in as the head batch
-	if (*batch).Number() == s.BatchPos && s.headBatch == nil {
+	if (*batch).Number() == s.nextBatchPos && s.headBatch == nil {
 		s.Log.Info("Setting batch as the head batch",
 			"hash", (*batch).Hash(),
 			"parentHash", header.ParentHash,
@@ -473,11 +494,12 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 			"parentHash", header.ParentHash,
 			"epochNum", header.Number,
 			"timestamp", header.Time)
+		// BatchBuffer.Insert returns only ErrDuplicateBatch or ErrAtCapacity; the two
+		// branches below are therefore exhaustive and falling through to return nil is correct.
 		err := s.BatchBuffer.Insert(*batch)
 		if errors.Is(err, ErrDuplicateBatch) {
-			s.Log.Warn("Dropping batch with duplicate hash")
-		}
-		if errors.Is(err, ErrAtCapacity) {
+			s.Log.Warn(DroppingBatchLogPrefix + " with duplicate hash")
+		} else if errors.Is(err, ErrAtCapacity) {
 			return err
 		}
 	}
@@ -489,8 +511,8 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 func (s *BatchStreamer[B]) Next(ctx context.Context) *B {
 	// Is the next batch available?
 	if s.HasNext(ctx) {
-		// Current batch is going to be processed, update fallback batch position
-		s.BatchPos += 1
+		// Current batch is going to be processed, advance the next expected batch position
+		s.nextBatchPos += 1
 		head := s.headBatch
 		s.headBatch = nil
 		// If we have been skipping batches, now is the time
@@ -510,7 +532,7 @@ func (s *BatchStreamer[B]) HasNext(ctx context.Context) bool {
 	for {
 		if s.headBatch == nil {
 			nextBuffered := s.BatchBuffer.Peek()
-			if nextBuffered != nil && (*nextBuffered).Number() == s.BatchPos {
+			if nextBuffered != nil && (*nextBuffered).Number() == s.nextBatchPos {
 				s.headBatch = nextBuffered
 				s.BatchBuffer.Pop()
 			} else {
@@ -572,7 +594,7 @@ func (s *BatchStreamer[B]) confirmEspressoBlockHeight(safeL1Origin eth.BlockID) 
 	// position to this height, or we risk dipping below
 	// hotshot origin on reset.
 	if hotshotState.BlockHeight <= s.originHotShotPos {
-		s.Log.Info("HotShot height at L1 Origin less than HotShot origin of the streamer, ignoring")
+		s.Log.Debug("HotShot height at L1 Origin less than HotShot origin of the streamer, ignoring")
 		return shouldReset
 	}
 
