@@ -133,9 +133,11 @@ type BatchStreamer[B Batch] struct {
 	// trackPerformance controls whether HotShot block headers are fetched
 	// alongside transactions to record per-batch finalization timestamps.
 	trackPerformance bool
-	// batchTimestamps maps batch hash to the HotShot block unix timestamp
-	// in which the batch was finalized. Only populated when trackPerformance is true.
-	batchTimestamps map[common.Hash]uint64
+	// batchTimestamps is an LRU cache mapping batch hash to the HotShot block
+	// unix timestamp. Using LRU instead of a plain map avoids memory leaks from
+	// dropped batches and keeps timestamps alive for the BufferedEspressoStreamer
+	// which calls Next() on the underlying streamer before the consumer reads them.
+	batchTimestamps *simplelru.LRU[common.Hash, uint64]
 }
 
 // Compile time assertion to ensure EspressoStreamer implements
@@ -166,9 +168,9 @@ func NewEspressoStreamer[B Batch](
 		return nil, fmt.Errorf("failed to bind BatchAuthenticator at %s: %w", batchAuthenticatorAddress, err)
 	}
 
-	var batchTimestamps map[common.Hash]uint64
+	var batchTimestamps *simplelru.LRU[common.Hash, uint64]
 	if trackPerformance {
-		batchTimestamps = make(map[common.Hash]uint64)
+		batchTimestamps, _ = simplelru.NewLRU[common.Hash, uint64](int(BatchBufferCapacity), nil)
 	}
 
 	return &BatchStreamer[B]{
@@ -204,7 +206,7 @@ func (s *BatchStreamer[B]) Reset() {
 	s.skipPos = math.MaxUint64
 	s.BatchBuffer.Clear()
 	if s.trackPerformance {
-		s.batchTimestamps = make(map[common.Hash]uint64)
+		s.batchTimestamps.Purge()
 	}
 }
 
@@ -437,14 +439,16 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 	// When performance tracking is enabled, fetch HotShot headers for the
 	// same range so we can record each batch's finalization timestamp.
 	var headerTimestamps []uint64
-	if s.trackPerformance {
+	if s.trackPerformance && len(hotShotBlocks) > 0 {
 		headers, headerErr := s.EspressoClient.FetchHeadersByRange(ctx, start, finish)
 		if headerErr != nil {
 			s.Log.Warn("Failed to fetch HotShot headers for timestamp tracking", "error", headerErr)
 		} else {
 			headerTimestamps = make([]uint64, len(headers))
 			for i, h := range headers {
-				headerTimestamps[i] = h.Header.GetTimestamp()
+				if h.Header != nil {
+					headerTimestamps[i] = h.Header.GetTimestamp()
+				}
 			}
 		}
 	}
@@ -543,7 +547,7 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 	}
 
 	if s.trackPerformance && hotshotTimestamp > 0 {
-		s.batchTimestamps[(*batch).Hash()] = hotshotTimestamp
+		s.batchTimestamps.Add((*batch).Hash(), hotshotTimestamp)
 	}
 
 	return nil
@@ -562,9 +566,6 @@ func (s *BatchStreamer[B]) Next(ctx context.Context) *B {
 		if s.skipPos != math.MaxUint64 {
 			s.hotShotPos = s.skipPos
 			s.skipPos = math.MaxUint64
-		}
-		if s.trackPerformance {
-			delete(s.batchTimestamps, (*head).Hash())
 		}
 		return head
 	}
@@ -666,8 +667,7 @@ func (s *BatchStreamer[B]) GetBatchTimestamp(hash common.Hash) (uint64, bool) {
 	if !s.trackPerformance {
 		return 0, false
 	}
-	ts, ok := s.batchTimestamps[hash]
-	return ts, ok
+	return s.batchTimestamps.Get(hash)
 }
 
 // UnmarshalBatch implements EspressoStreamerIFace

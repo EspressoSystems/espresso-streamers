@@ -1639,7 +1639,7 @@ func TestBatchTimestampCleanupOnNext(t *testing.T) {
 	streamer.Next(ctx)
 
 	_, ok = streamer.GetBatchTimestamp(batchHash)
-	require.False(t, ok, "timestamp should be removed after Next()")
+	require.True(t, ok, "timestamp should survive Next() for BufferedEspressoStreamer compatibility")
 }
 
 func TestBatchTimestampCleanupOnReset(t *testing.T) {
