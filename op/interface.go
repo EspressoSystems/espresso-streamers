@@ -3,6 +3,8 @@ package op
 import (
 	"context"
 
+	"github.com/ethereum/go-ethereum/common"
+
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 )
 
@@ -69,4 +71,8 @@ type EspressoStreamer[B Batch] interface {
 
 	// GetFallbackHotshotPos returns the fallback hotshot position
 	GetFallbackHotshotPos() uint64
+
+	// GetBatchTimestamp returns the HotShot block timestamp for a batch
+	// identified by hash. Returns (0, false) when tracking is disabled.
+	GetBatchTimestamp(hash common.Hash) (uint64, bool)
 }

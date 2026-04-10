@@ -142,6 +142,10 @@ func (m *MockStreamer[B]) GetFallbackHotshotPos() uint64 {
 	return m.fallbackHotshotPos
 }
 
+func (m *MockStreamer[B]) GetBatchTimestamp(hash common.Hash) (uint64, bool) {
+	return 0, false
+}
+
 // TestMockStreamerBasicFunctionality tests the basic functionality of the
 // MockStreamer, including batch creation, position tracking, and reset
 // behavior.
@@ -343,4 +347,14 @@ func TestBufferedStreamerGetFallbackHotshotPos(t *testing.T) {
 
 	mockStreamer.fallbackHotshotPos = 100
 	require.Equal(t, uint64(100), streamer.GetFallbackHotshotPos())
+}
+
+func TestBufferedStreamerGetBatchTimestamp(t *testing.T) {
+	mockStreamer := &MockStreamer[BatchMock]{
+		createBatch: createBatchMock,
+	}
+	streamer := op.NewBufferedEspressoStreamer(mockStreamer)
+
+	_, ok := streamer.GetBatchTimestamp(common.Hash{})
+	require.False(t, ok, "should delegate to underlying mock which returns false")
 }

@@ -45,6 +45,7 @@ func TestNewEspressoStreamer(t *testing.T) {
 		0,
 		1,
 		batchAuthAddr,
+		false,
 	)
 	require.NoError(t, err)
 }
@@ -67,6 +68,7 @@ func TestResetAfterNewDoesNotSkipBatch(t *testing.T) {
 		0,
 		originBatchPos,
 		batchAuthAddr,
+		false,
 	)
 	require.NoError(t, err)
 	require.Equal(t, originBatchPos+1, streamer.nextBatchPos, "BatchPos should be originBatchPos+1 after New")
@@ -253,6 +255,14 @@ func (m *MockStreamerSource) FetchLatestBlockHeight(ctx context.Context) (uint64
 	return m.LatestEspHeight, nil
 }
 
+func (m *MockStreamerSource) FetchHeadersByRange(ctx context.Context, from uint64, until uint64) ([]espressoCommon.HeaderImpl, error) {
+	var headers []espressoCommon.HeaderImpl
+	for h := from; h < until; h++ {
+		headers = append(headers, mockHeaderImpl(h))
+	}
+	return headers, nil
+}
+
 // ErrorNotFound is a custom error type used to indicate that a requested
 // resource was not found.
 type ErrorNotFound struct{}
@@ -402,6 +412,15 @@ func (l *NoOpLogger) LogAttrs(ctx context.Context, level slog.Level, msg string,
 func (l *NoOpLogger) SetContext(ctx context.Context)                                          {}
 func (l *NoOpLogger) WriteCtx(ctx context.Context, level slog.Level, msg string, args ...any) {}
 
+func mockHeaderImpl(height uint64) espressoCommon.HeaderImpl {
+	return espressoCommon.HeaderImpl{
+		Header: &espressoCommon.Header0_3{
+			Height:    height,
+			Timestamp: height,
+		},
+	}
+}
+
 func createHashFromHeight(height uint64) common.Hash {
 	var hash common.Hash
 	binary.LittleEndian.PutUint64(hash[(len(hash)-8):], height)
@@ -449,6 +468,10 @@ var batchAuthenticatorAddr = common.HexToAddress("0x0000000000000000000000000000
 // for testing purposes. It sets up the initial state of the MockStreamerSource
 // and returns both the MockStreamerSource and the EspressoStreamer.
 func setupStreamerTesting(namespace uint64, batcherAddress common.Address, originBatchPos ...uint64) (*MockStreamerSource, *BatchStreamer[derivation.EspressoBatch]) {
+	return setupStreamerTestingWithPerf(namespace, batcherAddress, false, originBatchPos...)
+}
+
+func setupStreamerTestingWithPerf(namespace uint64, batcherAddress common.Address, trackPerformance bool, originBatchPos ...uint64) (*MockStreamerSource, *BatchStreamer[derivation.EspressoBatch]) {
 	batchPos := uint64(1)
 	if len(originBatchPos) > 0 {
 		batchPos = originBatchPos[0]
@@ -469,6 +492,7 @@ func setupStreamerTesting(namespace uint64, batcherAddress common.Address, origi
 		0,
 		batchPos,
 		batchAuthenticatorAddr,
+		trackPerformance,
 	)
 	if err != nil {
 		panic(fmt.Sprintf("setupStreamerTesting: failed to create streamer: %v", err))
@@ -1531,4 +1555,122 @@ func TestDuplicateHeadBatchDropped(t *testing.T) {
 
 	require.True(t, streamer.HasNext(ctx))
 	require.Equal(t, uint64(2), streamer.Next(ctx).Number())
+}
+
+func TestBatchTimestampTracking(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	namespace := uint64(42)
+	chainID := big.NewInt(int64(namespace))
+	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSigner := chainSignerFactory(chainID, common.Address{})
+
+	state, streamer := setupStreamerTestingWithPerf(namespace, signerAddress, true)
+	rng := rand.New(rand.NewSource(0))
+
+	syncStatus := state.SyncStatus()
+	require.NoError(t, streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin))
+
+	_, espBatch, _, espTxnInBlock := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, 1, chainSigner)
+	hotshotHeight := uint64(10)
+	state.AddEspressoTransactionData(hotshotHeight, namespace, espTxnInBlock)
+
+	require.NoError(t, streamer.Update(ctx))
+	require.True(t, streamer.HasNext(ctx))
+
+	ts, ok := streamer.GetBatchTimestamp(espBatch.Hash())
+	require.True(t, ok)
+	require.Equal(t, hotshotHeight, ts, "timestamp should equal the HotShot block height used in mock headers")
+}
+
+func TestBatchTimestampCleanupOnNext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	namespace := uint64(42)
+	chainID := big.NewInt(int64(namespace))
+	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSigner := chainSignerFactory(chainID, common.Address{})
+
+	state, streamer := setupStreamerTestingWithPerf(namespace, signerAddress, true)
+	rng := rand.New(rand.NewSource(0))
+
+	syncStatus := state.SyncStatus()
+	require.NoError(t, streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin))
+
+	_, espBatch, _, espTxnInBlock := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, 1, chainSigner)
+	state.AddEspressoTransactionData(5, namespace, espTxnInBlock)
+
+	require.NoError(t, streamer.Update(ctx))
+	require.True(t, streamer.HasNext(ctx))
+
+	batchHash := espBatch.Hash()
+	_, ok := streamer.GetBatchTimestamp(batchHash)
+	require.True(t, ok, "timestamp should exist before Next()")
+
+	streamer.Next(ctx)
+
+	_, ok = streamer.GetBatchTimestamp(batchHash)
+	require.False(t, ok, "timestamp should be removed after Next()")
+}
+
+func TestBatchTimestampCleanupOnReset(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	namespace := uint64(42)
+	chainID := big.NewInt(int64(namespace))
+	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSigner := chainSignerFactory(chainID, common.Address{})
+
+	state, streamer := setupStreamerTestingWithPerf(namespace, signerAddress, true)
+	rng := rand.New(rand.NewSource(0))
+
+	syncStatus := state.SyncStatus()
+	require.NoError(t, streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin))
+
+	_, espBatch, _, espTxnInBlock := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, 1, chainSigner)
+	state.AddEspressoTransactionData(5, namespace, espTxnInBlock)
+
+	require.NoError(t, streamer.Update(ctx))
+	require.True(t, streamer.HasNext(ctx))
+
+	batchHash := espBatch.Hash()
+	_, ok := streamer.GetBatchTimestamp(batchHash)
+	require.True(t, ok, "timestamp should exist before Reset()")
+
+	streamer.Reset()
+
+	_, ok = streamer.GetBatchTimestamp(batchHash)
+	require.False(t, ok, "timestamps should be cleared after Reset()")
+}
+
+func TestBatchTimestampDisabledByDefault(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	namespace := uint64(42)
+	chainID := big.NewInt(int64(namespace))
+	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSigner := chainSignerFactory(chainID, common.Address{})
+
+	state, streamer := setupStreamerTesting(namespace, signerAddress)
+	rng := rand.New(rand.NewSource(0))
+
+	syncStatus := state.SyncStatus()
+	require.NoError(t, streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin))
+
+	_, espBatch, _, espTxnInBlock := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, 1, chainSigner)
+	state.AddEspressoTransactionData(5, namespace, espTxnInBlock)
+
+	require.NoError(t, streamer.Update(ctx))
+	require.True(t, streamer.HasNext(ctx))
+
+	_, ok := streamer.GetBatchTimestamp(espBatch.Hash())
+	require.False(t, ok, "GetBatchTimestamp should return false when tracking is disabled")
 }

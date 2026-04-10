@@ -3,6 +3,8 @@ package op
 import (
 	"context"
 
+	"github.com/ethereum/go-ethereum/common"
+
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 )
 
@@ -200,6 +202,10 @@ func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context) *B {
 		// Discard the old batch and try again
 		b.streamer.Next(ctx)
 	}
+}
+
+func (b *BufferedEspressoStreamer[B]) GetBatchTimestamp(hash common.Hash) (uint64, bool) {
+	return b.streamer.GetBatchTimestamp(hash)
 }
 
 // UnmarshalBatch implements EspressoStreamerIFace
