@@ -54,6 +54,7 @@ type LightClientCallerInterface interface {
 type EspressoClient interface {
 	FetchLatestBlockHeight(ctx context.Context) (uint64, error)
 	FetchNamespaceTransactionsInRange(ctx context.Context, fromHeight uint64, toHeight uint64, namespace uint64) ([]espressoCommon.NamespaceTransactionsRangeData, error)
+	FetchHeadersByRange(ctx context.Context, fromHeight uint64, toHeight uint64) ([]espressoCommon.HeaderImpl, error)
 }
 
 // L1Client is an interface that documents the methods we utilize for
@@ -128,6 +129,14 @@ type BatchStreamer[B Batch] struct {
 	finalizedL1StateCache *simplelru.LRU[uint64, l1State]
 
 	unmarshalBatch func([]byte) (*B, error)
+
+	// track batch timestamp controls whether the streamer will
+	// record the timestamp at which Hotshot finalized a given batch
+	// This feature can be used by clients to measure performace
+	// of their system after Hotshot has finalized a batch
+	trackBatchTimestamp bool
+	// Tracks the timestamp at which Hotshot finalized a given batch, keyed by batch hash
+	batchTimestamps *simplelru.LRU[common.Hash, uint64]
 }
 
 // Compile time assertion to ensure EspressoStreamer implements
@@ -145,6 +154,7 @@ func NewEspressoStreamer[B Batch](
 	originHotShotPos uint64,
 	originBatchPos uint64,
 	batchAuthenticatorAddress common.Address,
+	trackBatchTimestamp bool,
 ) (*BatchStreamer[B], error) {
 	if batchAuthenticatorAddress == (common.Address{}) {
 		return nil, errors.New("BatchAuthenticator address must be set for Espresso streamer")
@@ -155,6 +165,11 @@ func NewEspressoStreamer[B Batch](
 	batchAuthenticatorCaller, err := bindings.NewBatchAuthenticatorCaller(batchAuthenticatorAddress, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind BatchAuthenticator at %s: %w", batchAuthenticatorAddress, err)
+	}
+
+	var batchTimestamps *simplelru.LRU[common.Hash, uint64]
+	if trackBatchTimestamp {
+		batchTimestamps, _ = simplelru.NewLRU[common.Hash, uint64](int(BatchBufferCapacity), nil)
 	}
 
 	return &BatchStreamer[B]{
@@ -176,6 +191,8 @@ func NewEspressoStreamer[B Batch](
 		fallbackHotShotPos:    originHotShotPos,
 		hotShotPos:            originHotShotPos,
 		skipPos:               math.MaxUint64,
+		trackBatchTimestamp:   trackBatchTimestamp,
+		batchTimestamps:       batchTimestamps,
 	}, nil
 }
 
@@ -187,6 +204,9 @@ func (s *BatchStreamer[B]) Reset() {
 	s.headBatch = nil
 	s.skipPos = math.MaxUint64
 	s.BatchBuffer.Clear()
+	if s.trackBatchTimestamp {
+		s.batchTimestamps.Purge()
+	}
 }
 
 // RefreshSafeL1Origin is a convenience method that allows us to update the
@@ -414,6 +434,10 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 	if len(hotShotBlocks) == 0 {
 		s.Log.Trace("No transactions in hotshot block range", "start", start, "finish", finish)
 	}
+	var headerTimestamps []uint64
+	if s.trackBatchTimestamp {
+		headerTimestamps = s.trackBatchTimestamps(ctx, hotShotBlocks, start, finish)
+	}
 
 	// We want to keep track of the latest block we have processed.
 	// This is essential for ensuring we don't unnecessarily keep
@@ -424,8 +448,12 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 
 	for i, namespaceBlock := range hotShotBlocks {
 		blockPos := start + uint64(i)
+		var headerTimestamp uint64
+		if s.trackBatchTimestamp && headerTimestamps != nil && i < len(headerTimestamps) {
+			headerTimestamp = headerTimestamps[i]
+		}
 		for _, txn := range namespaceBlock.Transactions {
-			err := s.processEspressoTransaction(ctx, txn.Payload)
+			err := s.processEspressoTransaction(ctx, txn.Payload, headerTimestamp)
 			if errors.Is(err, ErrAtCapacity) {
 				// Record one block before the failing block so that after rewinding
 				// hotShotPos to skipPos, the next computeEspressoBlockHeightsRange
@@ -442,10 +470,30 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 	return nil
 }
 
+// trackBatchTimestamps is a helper method that will record the timestamp of
+// the blocks in hotshotBlocks
+func (s *BatchStreamer[B]) trackBatchTimestamps(ctx context.Context, hotshotBlocks []espressoCommon.NamespaceTransactionsRangeData, start uint64, end uint64) []uint64 {
+	if len(hotshotBlocks) == 0 {
+		return nil
+	}
+	headers, err := s.EspressoClient.FetchHeadersByRange(ctx, start, end)
+	if err != nil {
+		s.Log.Warn("Failed to fetch headers by range", "error", err)
+		return nil
+	}
+	headerTimestamps := make([]uint64, len(headers))
+	for i, header := range headers {
+		if header.Header != nil {
+			headerTimestamps[i] = header.Header.GetTimestamp()
+		}
+	}
+	return headerTimestamps
+}
+
 // processEspressoTransaction is a helper method that encapsulates the logic of
 // processing batches from the transactions in a block fetched from Espresso.
 // It will return an error if the transaction contains a valid batch, but the buffer is full.
-func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, transaction espressoCommon.Bytes) error {
+func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, transaction espressoCommon.Bytes, hotshotTimestamp uint64) error {
 	batch, err := s.UnmarshalBatch(transaction)
 	if err != nil {
 		s.Log.Warn(DroppingBatchLogPrefix+" with invalid transaction data", "error", err)
@@ -504,7 +552,18 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 		}
 	}
 
+	if s.trackBatchTimestamp {
+		s.batchTimestamps.Add((*batch).Hash(), hotshotTimestamp)
+	}
+
 	return nil
+}
+
+func (s *BatchStreamer[B]) GetBatchTimestamp(hash common.Hash) (uint64, bool) {
+	if !s.trackBatchTimestamp {
+		return 0, false
+	}
+	return s.batchTimestamps.Get(hash)
 }
 
 // UnmarshalBatch implements EspressoStreamerIFace

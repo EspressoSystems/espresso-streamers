@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // EspressoStreamer defines the interface for the Espresso streamer.
@@ -69,4 +70,8 @@ type EspressoStreamer[B Batch] interface {
 
 	// GetFallbackHotshotPos returns the fallback hotshot position
 	GetFallbackHotshotPos() uint64
+
+	// GetBatchTimestamp returns the timestamp
+	// at which hotshot finalized a given block
+	GetBatchTimestamp(hash common.Hash) (uint64, bool)
 }

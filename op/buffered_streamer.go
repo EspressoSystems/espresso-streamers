@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // BufferedEspressoStreamer is a wrapper around EspressoStreamerIFace that
@@ -136,6 +137,10 @@ func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context, finalizedL1 e
 func (b *BufferedEspressoStreamer[B]) Reset() {
 	// Reset the buffered streamer state
 	b.readPos = 0
+}
+
+func (b *BufferedEspressoStreamer[B]) GetBatchTimestamp(hash common.Hash) (uint64, bool) {
+	return b.streamer.GetBatchTimestamp(hash)
 }
 
 // HasNext implements EspressoStreamerIFace
