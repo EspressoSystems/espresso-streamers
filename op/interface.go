@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // EspressoStreamer defines the interface for the Espresso streamer.
@@ -50,6 +51,13 @@ type EspressoStreamer[B Batch] interface {
 	// good safe block position there as well.
 	Reset()
 
+	// SoftReset rewinds nextBatchPos to the last safe position and clears
+	// headBatch, but preserves hotShotPos and the batch buffer. Use this
+	// after a channel manager clearState: fork batches already fetched from
+	// HotShot remain in the buffer and will be re-evaluated by Peek with
+	// the new chain tip, without needing to re-fetch from HotShot.
+	SoftReset()
+
 	// Remove removes a batch that caused a reorg from the streamer. The
 	// streamer reverts its position to that batch's block number so the
 	// new-fork version of the block will be re-read from HotShot. hotShotPos
@@ -69,9 +77,10 @@ type EspressoStreamer[B Batch] interface {
 	// nil.
 	Next(ctx context.Context) *B
 
-	// Peek attempts to return the next batch from the streamer without advancing the streamer's position.
-	// If there are no batches left to read, at the moment of the call, it will return nil.
-	Peek(ctx context.Context) *B
+	// Peek returns the batch at the current position whose parentHash matches the
+	// provided tip, without advancing the position. If no fork matches, returns nil.
+	// A zero parentHash means the channel manager has no tip yet; any fork is accepted.
+	Peek(ctx context.Context, parentHash common.Hash) *B
 
 	// GetFallbackHotshotPos returns the fallback hotshot position
 	GetFallbackHotshotPos() uint64

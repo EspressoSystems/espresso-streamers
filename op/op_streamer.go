@@ -209,6 +209,20 @@ func (s *BatchStreamer[B]) Remove(batch *B) {
 	}
 }
 
+// SoftReset rewinds nextBatchPos to the last safe position and clears
+// headBatch, but preserves hotShotPos and the batch buffer. Fork batches
+// already in the buffer will be re-evaluated by Peek with the new chain tip.
+func (s *BatchStreamer[B]) SoftReset() {
+	s.Log.Info("soft reset espresso streamer",
+		"hotShotPos", s.hotShotPos,
+		"oldNextBatchPos", s.nextBatchPos,
+		"newNextBatchPos", s.fallbackBatchPos+1,
+	)
+	s.nextBatchPos = s.fallbackBatchPos + 1
+	s.headBatch = nil
+	s.skipPos = math.MaxUint64
+}
+
 // PartialReset resets the batch position and clears the BatchBuffer without
 // rewinding the HotShot scan position.
 //
@@ -413,11 +427,42 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 	return nil
 }
 
-// Peek returns the next valid batch without consuming it.
-func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
-	if s.HasNext(ctx) {
+// Peek returns the batch at the current position whose parentHash matches the
+// provided tip, without advancing the position. If headBatch doesn't match,
+// the buffer is scanned for a same-position fork that does, and headBatch is
+// swapped. Returns nil if no matching fork is available yet.
+// A zero parentHash (empty channel manager) accepts any fork.
+func (s *BatchStreamer[B]) Peek(ctx context.Context, parentHash common.Hash) *B {
+	if !s.HasNext(ctx) {
+		return nil
+	}
+	// Zero hash: channel manager has no tip yet, accept whatever is at head.
+	if parentHash == (common.Hash{}) || (*s.headBatch).Header().ParentHash == parentHash {
 		return s.headBatch
 	}
+	// headBatch doesn't match the tip; scan the buffer for a fork at nextBatchPos
+	// whose parentHash does.
+	for i := 0; i < s.BatchBuffer.Len(); i++ {
+		b := s.BatchBuffer.Get(i)
+		if b == nil || (*b).Number() > s.nextBatchPos {
+			break // buffer is sorted; no more candidates at this position
+		}
+		if (*b).Number() == s.nextBatchPos && (*b).Header().ParentHash == parentHash {
+			// Found the right fork: swap it into headBatch.
+			found := *b
+			s.BatchBuffer.RemoveByHash(found.Hash())
+			if err := s.BatchBuffer.Insert(*s.headBatch); err != nil {
+				s.Log.Warn("BatchStreamer: failed to re-insert old headBatch into buffer", "err", err)
+			}
+			s.headBatch = &found
+			return s.headBatch
+		}
+	}
+	s.Log.Info("BatchStreamer: no fork matches tip",
+		"blockNr", s.nextBatchPos,
+		"tip", parentHash,
+		"headParent", (*s.headBatch).Header().ParentHash,
+	)
 	return nil
 }
 
