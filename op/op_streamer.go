@@ -204,9 +204,6 @@ func (s *BatchStreamer[B]) Reset() {
 	s.headBatch = nil
 	s.skipPos = math.MaxUint64
 	s.BatchBuffer.Clear()
-	if s.trackBatchTimestamp {
-		s.batchTimestamps.Purge()
-	}
 }
 
 // RefreshSafeL1Origin is a convenience method that allows us to update the
@@ -552,7 +549,7 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 		}
 	}
 
-	if s.trackBatchTimestamp {
+	if s.trackBatchTimestamp && hotshotTimestamp != 0 {
 		s.batchTimestamps.Add((*batch).Hash(), hotshotTimestamp)
 	}
 
