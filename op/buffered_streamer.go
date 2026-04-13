@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -134,8 +135,15 @@ func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context, finalizedL1 e
 // Reset resets the buffered streamer state to the last known good
 // safe batch position.
 func (b *BufferedEspressoStreamer[B]) Reset() {
-	// Reset the buffered streamer state
 	b.readPos = 0
+	b.streamer.Reset()
+}
+
+// SoftReset rewinds the read position without clearing the local buffer,
+// and delegates SoftReset to the underlying streamer.
+func (b *BufferedEspressoStreamer[B]) SoftReset() {
+	b.readPos = 0
+	b.streamer.SoftReset()
 }
 
 // HasNext implements EspressoStreamerIFace
@@ -185,12 +193,16 @@ func (b *BufferedEspressoStreamer[B]) GetFallbackHotshotPos() uint64 {
 	return b.streamer.GetFallbackHotshotPos()
 }
 
-func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context) *B {
+func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context, parentHash common.Hash) *B {
 	if b.readPos < uint64(len(b.batches)) {
-		return b.batches[b.readPos]
+		batch := b.batches[b.readPos]
+		if parentHash == (common.Hash{}) || (*batch).Header().ParentHash == parentHash {
+			return batch
+		}
+		return nil
 	}
 	for {
-		batch := b.streamer.Peek(ctx)
+		batch := b.streamer.Peek(ctx, parentHash)
 		if batch == nil {
 			return nil
 		}
