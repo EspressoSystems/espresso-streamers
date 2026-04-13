@@ -316,7 +316,7 @@ const HOTSHOT_BLOCK_FETCH_LIMIT = 100
 // from Espresso. It starts from the last processed block and goes up to
 // `limit` blocks ahead or the current block height, whichever
 // is smaller.
-func (s *BatchStreamer[B]) computeEspressoBlockHeightsRange(currentBlockHeight uint64, limit uint64) (start uint64, finish uint64) {
+func (s *BatchStreamer[B]) computeEspressoBlockHeightsRange(finalizedBlockHeight uint64, limit uint64) (start uint64, finish uint64) {
 	start = s.hotShotPos
 	if start > 0 {
 		// We've already processed the block in hotShotPos.  In order to avoid
@@ -324,7 +324,7 @@ func (s *BatchStreamer[B]) computeEspressoBlockHeightsRange(currentBlockHeight u
 		start++
 	}
 	// `FetchNamespaceTransactionsInRange` is exclusive to finish, so we add 1 to currentBlockHeight
-	finish = min(start+limit, currentBlockHeight+1)
+	finish = min(start+limit, finalizedBlockHeight+1)
 
 	return start, finish
 }
@@ -347,18 +347,19 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 	// Retrieve the current block height from Espresso.  We grab this reference
 	// so we don't have to keep fetching it in a loop, and it informs us of
 	// the current block height available to process.
-	currentBlockHeight, err := s.EspressoClient.FetchLatestBlockHeight(ctx)
+	latest, err := s.EspressoClient.FetchLatestBlockHeight(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to fetch latest block height: %w", err)
 	}
-	if currentBlockHeight == math.MaxUint64 {
+	if latest == math.MaxUint64 {
 		return fmt.Errorf("espresso block height overflows uint64")
 	}
+	finalizedBlockHeight := latest - 2
 
 	// Fetch API implementation
 	for i := 0; ; i++ {
 		// Fetch more batches from HotShot if available.
-		start, finish := s.computeEspressoBlockHeightsRange(currentBlockHeight, HOTSHOT_BLOCK_FETCH_LIMIT)
+		start, finish := s.computeEspressoBlockHeightsRange(finalizedBlockHeight, HOTSHOT_BLOCK_FETCH_LIMIT)
 
 		if start >= finish || (start+1 == finish && i > 0) {
 			// If start is one less than our finish, then that means we
@@ -378,7 +379,7 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 		}
 
 		// Process the new batches fetched from Espresso
-		if err := s.fetchHotShotRange(ctx, start, finish, currentBlockHeight); err != nil {
+		if err := s.fetchHotShotRange(ctx, start, finish, finalizedBlockHeight); err != nil {
 			return fmt.Errorf("failed to process hotshot range: %w", err)
 		}
 
@@ -486,6 +487,7 @@ func (s *BatchStreamer[B]) trackBatchFinalizationTimestamps(ctx context.Context,
 	// of block start+i.
 	finalizationEnd := min(end+2, currentBlockHeight+1)
 	if start+2 >= finalizationEnd {
+		log.Info("start + 2 is greater than finalizationend", "start", start+2, "end", finalizationEnd)
 		return nil
 	}
 	headers, err := s.EspressoClient.FetchHeadersByRange(ctx, start+2, finalizationEnd)
@@ -497,6 +499,8 @@ func (s *BatchStreamer[B]) trackBatchFinalizationTimestamps(ctx context.Context,
 	for i, header := range headers {
 		if header.Header != nil {
 			headerTimestamps[i] = header.Header.GetTimestamp()
+		} else {
+			log.Warn("header is not found")
 		}
 	}
 	return headerTimestamps
