@@ -193,16 +193,30 @@ func (b *BufferedEspressoStreamer[B]) GetFallbackHotshotPos() uint64 {
 	return b.streamer.GetFallbackHotshotPos()
 }
 
-func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context, parentHash common.Hash) *B {
-	if b.readPos < uint64(len(b.batches)) {
+func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) *B {
+	// Drain any stale batches from the local buffer before checking the current one.
+	for b.readPos < uint64(len(b.batches)) {
 		batch := b.batches[b.readPos]
+		batchNum := (*batch).Number()
+		if blockNum != 0 && batchNum < blockNum {
+			// Stale entry: skip it.
+			b.readPos++
+			continue
+		}
+		if blockNum != 0 && batchNum > blockNum {
+			// Ahead of where channel manager expects; nothing ready yet.
+			return nil
+		}
+		// batchNum == blockNum (or blockNum == 0): check fork.
 		if parentHash == (common.Hash{}) || (*batch).Header().ParentHash == parentHash {
 			return batch
 		}
+		// Wrong fork at this height.
 		return nil
 	}
+	// Local buffer exhausted; defer to the underlying streamer.
 	for {
-		batch := b.streamer.Peek(ctx, parentHash)
+		batch := b.streamer.Peek(ctx, blockNum, parentHash)
 		if batch == nil {
 			return nil
 		}

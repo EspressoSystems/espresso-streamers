@@ -77,10 +77,11 @@ type EspressoStreamer[B Batch] interface {
 	// nil.
 	Next(ctx context.Context) *B
 
-	// Peek returns the batch at the current position whose parentHash matches the
-	// provided tip, without advancing the position. If no fork matches, returns nil.
-	// A zero parentHash means the channel manager has no tip yet; any fork is accepted.
-	Peek(ctx context.Context, parentHash common.Hash) *B
+	// Peek returns the batch at the current position whose block number equals blockNum
+	// and whose parentHash matches the provided tip, without advancing the position.
+	// If no fork matches, returns nil. A zero blockNum or zero parentHash skips that
+	// check (channel manager has no tip yet; any fork is accepted).
+	Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) *B
 
 	// GetFallbackHotshotPos returns the fallback hotshot position
 	GetFallbackHotshotPos() uint64

@@ -209,9 +209,11 @@ func (s *BatchStreamer[B]) Remove(batch *B) {
 	}
 }
 
-// SoftReset rewinds nextBatchPos to the last safe position and clears
-// headBatch, but preserves hotShotPos and the batch buffer. Fork batches
-// already in the buffer will be re-evaluated by Peek with the new chain tip.
+// SoftReset rewinds nextBatchPos to the last safe position, clears headBatch
+// and the BatchBuffer, but preserves hotShotPos. Old-fork batches in the
+// buffer are discarded; the queueing loop will re-post new-fork batches to
+// Espresso at HotShot positions beyond the current hotShotPos, where the
+// loading loop will pick them up on the next Update calls.
 func (s *BatchStreamer[B]) SoftReset() {
 	s.Log.Info("soft reset espresso streamer",
 		"hotShotPos", s.hotShotPos,
@@ -221,6 +223,7 @@ func (s *BatchStreamer[B]) SoftReset() {
 	s.nextBatchPos = s.fallbackBatchPos + 1
 	s.headBatch = nil
 	s.skipPos = math.MaxUint64
+	s.BatchBuffer.Clear()
 }
 
 // PartialReset resets the batch position and clears the BatchBuffer without
@@ -432,11 +435,17 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 // the buffer is scanned for a same-position fork that does, and headBatch is
 // swapped. Returns nil if no matching fork is available yet.
 // A zero parentHash (empty channel manager) accepts any fork.
-func (s *BatchStreamer[B]) Peek(ctx context.Context, parentHash common.Hash) *B {
+func (s *BatchStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) *B {
 	if !s.HasNext(ctx) {
 		return nil
 	}
-	// Zero hash: channel manager has no tip yet, accept whatever is at head.
+	// If blockNum is specified, verify the streamer is at the expected position.
+	if blockNum != 0 && s.nextBatchPos != blockNum {
+		s.Log.Warn("BatchStreamer: Peek blockNum mismatch",
+			"expected", s.nextBatchPos, "got", blockNum)
+		return nil
+	}
+	// Zero parentHash: channel manager has no tip yet, accept whatever is at head.
 	if parentHash == (common.Hash{}) || (*s.headBatch).Header().ParentHash == parentHash {
 		return s.headBatch
 	}

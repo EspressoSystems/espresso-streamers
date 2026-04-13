@@ -1396,11 +1396,11 @@ func TestPeek(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, streamer.HasNext(ctx))
 
-		peeked := streamer.Peek(ctx)
+		peeked := streamer.Peek(ctx, 0, common.Hash{})
 		require.NotNil(t, peeked)
 		require.Equal(t, uint64(l2Height), (*peeked).Number())
 
-		peekedAgain := streamer.Peek(ctx)
+		peekedAgain := streamer.Peek(ctx, 0, common.Hash{})
 		require.NotNil(t, peekedAgain)
 		require.Equal(t, (*peeked).Number(), (*peekedAgain).Number())
 
@@ -1421,6 +1421,6 @@ func TestPeek(t *testing.T) {
 		err = streamer.Update(ctx)
 		require.NoError(t, err)
 
-		require.Nil(t, streamer.Peek(ctx))
+		require.Nil(t, streamer.Peek(ctx, 0, common.Hash{}))
 	})
 }
