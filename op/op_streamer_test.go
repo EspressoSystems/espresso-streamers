@@ -1542,7 +1542,7 @@ func TestFetchHotShotRangeRejectsZeroFinish(t *testing.T) {
 
 	_, streamer := setupStreamerTesting(42, common.Address{})
 
-	err := streamer.fetchHotShotRange(ctx, 0, 0)
+	err := streamer.fetchHotShotRange(ctx, 0, 0, 0)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "finish must be > 0")
 }
@@ -1601,11 +1601,13 @@ func TestBatchTimestampTracking(t *testing.T) {
 	_, espBatch, _, espTxnInBlock := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, 1, chainSigner)
 	hotshotHeight := uint64(10)
 	state.AddEspressoTransactionData(hotshotHeight, namespace, espTxnInBlock)
+	// Advance LatestEspHeight so blocks N+2 exist for finalization timestamp lookup
+	state.LatestEspHeight = hotshotHeight + 2
 
 	require.NoError(t, streamer.Update(ctx))
 	require.True(t, streamer.HasNext(ctx))
 
-	ts, ok := streamer.GetBatchTimestamp(espBatch.Hash())
+	ts, ok := streamer.GetBatchFinalizationTimestamp(espBatch.Hash())
 	require.True(t, ok)
-	require.Equal(t, hotshotHeight, ts, "timestamp should equal the HotShot block height used in mock headers")
+	require.Equal(t, hotshotHeight+2, ts, "timestamp should equal block N+2 (finalization time)")
 }

@@ -71,7 +71,7 @@ type EspressoStreamer[B Batch] interface {
 	// GetFallbackHotshotPos returns the fallback hotshot position
 	GetFallbackHotshotPos() uint64
 
-	// GetBatchTimestamp returns the timestamp
-	// at which hotshot finalized a given block
-	GetBatchTimestamp(hash common.Hash) (uint64, bool)
+	// GetBatchFinalizationTimestamp returns the finalization timestamp for a
+	// given batch, which is the timestamp of block N+2 in HotShot.
+	GetBatchFinalizationTimestamp(hash common.Hash) (uint64, bool)
 }

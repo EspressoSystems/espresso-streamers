@@ -142,8 +142,7 @@ func (m *MockStreamer[B]) GetFallbackHotshotPos() uint64 {
 	return m.fallbackHotshotPos
 }
 
-// GetBatchTimestamp implements espresso.EspressoStreamer
-func (m *MockStreamer[B]) GetBatchTimestamp(hash common.Hash) (uint64, bool) {
+func (m *MockStreamer[B]) GetBatchFinalizationTimestamp(hash common.Hash) (uint64, bool) {
 	return 0, false
 }
 

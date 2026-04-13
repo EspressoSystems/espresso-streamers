@@ -378,7 +378,7 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 		}
 
 		// Process the new batches fetched from Espresso
-		if err := s.fetchHotShotRange(ctx, start, finish); err != nil {
+		if err := s.fetchHotShotRange(ctx, start, finish, currentBlockHeight); err != nil {
 			return fmt.Errorf("failed to process hotshot range: %w", err)
 		}
 
@@ -413,7 +413,7 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 // It will also update the hotShotPos to the last block processed, in order
 // to effectively keep track of the last block we have successfully fetched,
 // and therefore processed from Hotshot.
-func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish uint64) error {
+func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish uint64, currentBlockHeight uint64) error {
 	if finish == 0 {
 		return fmt.Errorf("fetchHotShotRange: finish must be > 0")
 	}
@@ -433,7 +433,7 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 	}
 	var headerTimestamps []uint64
 	if s.trackBatchTimestamp {
-		headerTimestamps = s.trackBatchTimestamps(ctx, hotShotBlocks, start, finish)
+		headerTimestamps = s.trackBatchFinalizationTimestamps(ctx, hotShotBlocks, start, finish, currentBlockHeight)
 	}
 
 	// We want to keep track of the latest block we have processed.
@@ -467,15 +467,30 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 	return nil
 }
 
-// trackBatchTimestamps is a helper method that will record the timestamp of
-// the blocks in hotshotBlocks
-func (s *BatchStreamer[B]) trackBatchTimestamps(ctx context.Context, hotshotBlocks []espressoCommon.NamespaceTransactionsRangeData, start uint64, end uint64) []uint64 {
+// trackBatchFinalizationTimestamps fetches the finalization timestamps for the
+// given range of HotShot blocks. In HotShot, block N is considered finalized
+// only after block N+2 is produced, so the finalization time of block N is
+// the timestamp of block N+2.
+//
+// currentBlockHeight is used to cap the fetch range so we never request
+// headers for blocks that don't exist yet. Blocks near the chain tip whose
+// N+2 block hasn't been produced will simply have no finalization timestamp
+// recorded (timestamp = 0), which is already handled gracefully downstream.
+func (s *BatchStreamer[B]) trackBatchFinalizationTimestamps(ctx context.Context, hotshotBlocks []espressoCommon.NamespaceTransactionsRangeData,
+	start uint64, end uint64, currentBlockHeight uint64) []uint64 {
 	if len(hotshotBlocks) == 0 {
 		return nil
 	}
-	headers, err := s.EspressoClient.FetchHeadersByRange(ctx, start, end)
+	// Fetch headers for blocks [start+2, finalizationEnd) so that headers[i]
+	// gives us the timestamp of block start+i+2 which is the finalization time
+	// of block start+i.
+	finalizationEnd := min(end+2, currentBlockHeight+1)
+	if start+2 >= finalizationEnd {
+		return nil
+	}
+	headers, err := s.EspressoClient.FetchHeadersByRange(ctx, start+2, finalizationEnd)
 	if err != nil {
-		s.Log.Warn("Failed to fetch headers by range", "error", err)
+		s.Log.Warn("failed to fetch finalization headers by range", "error", err)
 		return nil
 	}
 	headerTimestamps := make([]uint64, len(headers))
@@ -556,7 +571,7 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 	return nil
 }
 
-func (s *BatchStreamer[B]) GetBatchTimestamp(hash common.Hash) (uint64, bool) {
+func (s *BatchStreamer[B]) GetBatchFinalizationTimestamp(hash common.Hash) (uint64, bool) {
 	if !s.trackBatchTimestamp {
 		return 0, false
 	}
