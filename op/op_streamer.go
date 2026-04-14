@@ -563,12 +563,24 @@ func (s *BatchStreamer[B]) Next(ctx context.Context) *B {
 func (s *BatchStreamer[B]) HasNext(ctx context.Context) bool {
 	for {
 		if s.headBatch == nil {
-			nextBuffered := s.BatchBuffer.Peek()
-			if nextBuffered != nil && (*nextBuffered).Number() == s.nextBatchPos {
+			for {
+				nextBuffered := s.BatchBuffer.Peek()
+				if nextBuffered == nil {
+					return false
+				}
+				n := (*nextBuffered).Number()
+				if n < s.nextBatchPos {
+					s.Log.Info("HasNext: discarding stale buffered batch",
+						"bufferNum", n, "nextBatchPos", s.nextBatchPos)
+					s.BatchBuffer.Pop()
+					continue
+				}
+				if n > s.nextBatchPos {
+					return false
+				}
 				s.headBatch = nextBuffered
 				s.BatchBuffer.Pop()
-			} else {
-				return false
+				break
 			}
 		}
 
