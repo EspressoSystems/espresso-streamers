@@ -376,12 +376,17 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 // swapped. Returns nil if no matching fork is available yet.
 // A zero parentHash (empty channel manager) accepts any fork.
 func (s *BatchStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) (*B, error) {
+	if blockNum != 0 && blockNum > s.nextBatchPos {
+		s.Log.Info("BatchStreamer: Peek fast-forwarding nextBatchPos",
+			"from", s.nextBatchPos, "to", blockNum)
+		s.nextBatchPos = blockNum
+		s.headBatch = nil
+	}
+
 	if !s.HasNext(ctx) {
 		return nil, nil
 	}
-	// If blockNum is specified, verify the streamer is at the expected position.
-	// Return ErrPeekBlockNumMismatch so the caller (BufferedEspressoStreamer) can
-	// decide how to recover (e.g. reset) without the streamer resetting itself.
+
 	if blockNum != 0 && s.nextBatchPos != blockNum {
 		s.Log.Warn("BatchStreamer: Peek blockNum mismatch",
 			"expected", s.nextBatchPos, "got", blockNum)
