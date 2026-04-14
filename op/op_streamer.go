@@ -187,71 +187,6 @@ func (s *BatchStreamer[B]) Reset() {
 	s.BatchBuffer.Clear()
 }
 
-// Remove drops the old-fork batch from the streamer so that the new-fork
-// version will be re-read from HotShot. headBatch is cleared; nextBatchPos
-// is unchanged because the caller used Peek (not Next) before calling Remove.
-func (s *BatchStreamer[B]) Remove(batch *B) {
-	batchPos := (*batch).Number()
-	batchHash := (*batch).Hash()
-	blockHash := (*batch).Header().Hash()
-	removed := s.BatchBuffer.RemoveByHash(batchHash)
-	s.headBatch = nil
-
-	s.Log.Info("removed batch from streamer",
-		"pos", batchPos,
-		"batchHash", batchHash,
-		"foundInBuffer", removed,
-		"nextBatchPos", s.nextBatchPos,
-		"blockHash", blockHash,
-	)
-	for i := 0; i < s.BatchBuffer.Len(); i++ {
-		b := s.BatchBuffer.Get(i)
-		s.Log.Info("batch buffer after remove",
-			"index", i,
-			"blockNr", (*b).Number(),
-			"blockHash", (*b).Header().Hash(),
-		)
-	}
-}
-
-// SoftReset rewinds nextBatchPos to the last safe position, clears headBatch
-// and the BatchBuffer, but preserves hotShotPos. Old-fork batches in the
-// buffer are discarded; the queueing loop will re-post new-fork batches to
-// Espresso at HotShot positions beyond the current hotShotPos, where the
-// loading loop will pick them up on the next Update calls.
-func (s *BatchStreamer[B]) SoftReset() {
-	s.Log.Info("soft reset espresso streamer",
-		"hotShotPos", s.hotShotPos,
-		"oldNextBatchPos", s.nextBatchPos,
-		"newNextBatchPos", s.fallbackBatchPos+1,
-	)
-	s.nextBatchPos = s.fallbackBatchPos + 1
-	s.headBatch = nil
-	s.skipPos = math.MaxUint64
-	s.BatchBuffer.Clear()
-}
-
-// PartialReset resets the batch position and clears the BatchBuffer without
-// rewinding the HotShot scan position.
-//
-// After a sequencer reorg, the block-queueing loop re-posts new-fork blocks
-// to Espresso at HotShot positions beyond the current hotShotPos. By keeping
-// hotShotPos in place, the streamer will naturally encounter those new-fork
-// blocks as it continues scanning forward, rather than re-reading old-fork
-// blocks that appear at earlier HotShot positions.
-func (s *BatchStreamer[B]) PartialReset() {
-	s.Log.Info("partial reset espresso streamer",
-		"hotShotPos", s.hotShotPos,
-		"oldNextBatchPos", s.nextBatchPos,
-		"newNextBatchPos", s.fallbackBatchPos+1,
-	)
-	s.nextBatchPos = s.fallbackBatchPos + 1
-	s.headBatch = nil
-	s.skipPos = math.MaxUint64
-	s.hotShotPos = s.fallbackHotShotPos
-	s.BatchBuffer.Clear()
-}
-
 // RefreshSafeL1Origin is a convenience method that allows us to update the
 // safe L1 origin of the Streamer. It will confirm the Espresso Block Height
 // and reset the state if necessary.
@@ -515,6 +450,7 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 		for _, txn := range namespaceBlock.Transactions {
 			err := s.processEspressoTransaction(ctx, txn.Payload)
 			if errors.Is(err, ErrAtCapacity) {
+				s.Log.Warn("we are at capacity", "err", err)
 				// Record one block before the failing block so that after rewinding
 				// hotShotPos to skipPos, the next computeEspressoBlockHeightsRange
 				// starts scanning from blockPos (not blockPos+1).
@@ -586,6 +522,7 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 		if errors.Is(err, ErrDuplicateBatch) {
 			s.Log.Warn("Dropping batch with duplicate hash")
 		} else if errors.Is(err, ErrAtCapacity) {
+			s.Log.Warn("we are dropping batch due to being at capacity")
 			return err
 		}
 	}
