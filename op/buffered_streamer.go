@@ -2,10 +2,10 @@ package op
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/log"
 )
 
 // BufferedEspressoStreamer is a wrapper around EspressoStreamerIFace that
@@ -139,13 +139,6 @@ func (b *BufferedEspressoStreamer[B]) Reset() {
 	b.streamer.Reset()
 }
 
-// SoftReset rewinds the read position without clearing the local buffer,
-// and delegates SoftReset to the underlying streamer.
-func (b *BufferedEspressoStreamer[B]) SoftReset() {
-	b.readPos = 0
-	b.streamer.SoftReset()
-}
-
 // HasNext implements EspressoStreamerIFace
 //
 // It checks to see if there are any batches left to read in its local buffer.
@@ -193,63 +186,23 @@ func (b *BufferedEspressoStreamer[B]) GetFallbackHotshotPos() uint64 {
 	return b.streamer.GetFallbackHotshotPos()
 }
 
-func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) *B {
-	// Drain any stale batches from the local buffer before checking the current one.
-	for b.readPos < uint64(len(b.batches)) {
-		batch := b.batches[b.readPos]
-		batchNum := (*batch).Number()
-		if blockNum != 0 && batchNum < blockNum {
-			// Stale entry: skip it.
-			b.readPos++
-			continue
-		}
-		if blockNum != 0 && batchNum > blockNum {
-			// Ahead of where channel manager expects; nothing ready yet.
-			return nil
-		}
-		// batchNum == blockNum (or blockNum == 0): check fork.
-		if parentHash == (common.Hash{}) || (*batch).Header().ParentHash == parentHash {
-			return batch
-		}
-		// Wrong fork at this height.
-		return nil
-	}
-	// Local buffer exhausted; defer to the underlying streamer.
+func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) (*B, error) {
 	for {
-		batch := b.streamer.Peek(ctx, blockNum, parentHash)
+		batch, err := b.streamer.Peek(ctx, blockNum, parentHash)
+		if err != nil {
+			if errors.Is(err, ErrPeekBlockNumMismatch) {
+				b.Reset()
+			}
+			return nil, err
+		}
 		if batch == nil {
-			return nil
+			return nil, nil
 		}
 		if (*batch).Number() >= b.startingBatchPos {
-			return batch
+			return batch, nil
 		}
-		// Discard the old batch and try again
+		// Batch predates startingBatchPos; discard and try again.
 		b.streamer.Next(ctx)
-	}
-}
-
-// Remove removes the exact batch from the local buffer if it exists.
-// readPos is set to min(readPos, batchOffset) where batchOffset is the
-// removed batch's position relative to startingBatchPos, so that the next
-// Peek or Next call returns the batch at that position.
-func (b *BufferedEspressoStreamer[B]) Remove(batch *B) {
-	for i, buf := range b.batches {
-		if buf == batch {
-			b.batches[i] = nil
-			b.batches = append(b.batches[:i], b.batches[i+1:]...)
-			batchPos := (*batch).Number()
-			log.Info("removed batch", "pos", batchPos, "batchHash", (*batch).Hash(), "blockHash", (*batch).Header().Hash(), "readPosBefore", b.readPos)
-			if i < len(b.batches) {
-				log.Info("next batch in buffer", "pos", (*b.batches[i]).Number(), "hash", (*b.batches[i]).Header().Hash())
-			}
-			if batchPos >= b.startingBatchPos {
-				if offset := batchPos - b.startingBatchPos; offset < b.readPos {
-					b.readPos = offset
-				}
-			}
-			log.Info("readPos after removal", "readPosAfter", b.readPos)
-			return
-		}
 	}
 }
 

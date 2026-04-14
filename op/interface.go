@@ -51,19 +51,6 @@ type EspressoStreamer[B Batch] interface {
 	// good safe block position there as well.
 	Reset()
 
-	// SoftReset rewinds nextBatchPos to the last safe position and clears
-	// headBatch, but preserves hotShotPos and the batch buffer. Use this
-	// after a channel manager clearState: fork batches already fetched from
-	// HotShot remain in the buffer and will be re-evaluated by Peek with
-	// the new chain tip, without needing to re-fetch from HotShot.
-	SoftReset()
-
-	// Remove removes a batch that caused a reorg from the streamer. The
-	// streamer reverts its position to that batch's block number so the
-	// new-fork version of the block will be re-read from HotShot. hotShotPos
-	// is preserved so old-fork blocks are not re-scanned.
-	Remove(batch *B)
-
 	// UnmarshalBatch is a convenience method that allows the caller to
 	// attempt to unmarshal a batch from the provided byte slice.
 	UnmarshalBatch(b []byte) (*B, error)
@@ -81,7 +68,8 @@ type EspressoStreamer[B Batch] interface {
 	// and whose parentHash matches the provided tip, without advancing the position.
 	// If no fork matches, returns nil. A zero blockNum or zero parentHash skips that
 	// check (channel manager has no tip yet; any fork is accepted).
-	Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) *B
+	// Returns ErrPeekBlockNumMismatch if the streamer's position doesn't match blockNum.
+	Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) (*B, error)
 
 	// GetFallbackHotshotPos returns the fallback hotshot position
 	GetFallbackHotshotPos() uint64

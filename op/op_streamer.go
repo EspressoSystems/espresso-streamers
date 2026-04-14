@@ -21,6 +21,11 @@ import (
 
 const BatchBufferCapacity uint64 = 1024
 
+// ErrPeekBlockNumMismatch is returned by Peek when the streamer's internal
+// next-batch position doesn't match the requested blockNum, indicating the
+// streamer needs to be re-synced (e.g. after a reorg).
+var ErrPeekBlockNumMismatch = errors.New("BatchStreamer: Peek blockNum mismatch")
+
 // Espresso light client bindings don't have an explicit name for this struct,
 // so we define it here to avoid spelling it out every time
 type FinalizedState = struct {
@@ -435,19 +440,21 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 // the buffer is scanned for a same-position fork that does, and headBatch is
 // swapped. Returns nil if no matching fork is available yet.
 // A zero parentHash (empty channel manager) accepts any fork.
-func (s *BatchStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) *B {
+func (s *BatchStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) (*B, error) {
 	if !s.HasNext(ctx) {
-		return nil
+		return nil, nil
 	}
 	// If blockNum is specified, verify the streamer is at the expected position.
+	// Return ErrPeekBlockNumMismatch so the caller (BufferedEspressoStreamer) can
+	// decide how to recover (e.g. reset) without the streamer resetting itself.
 	if blockNum != 0 && s.nextBatchPos != blockNum {
 		s.Log.Warn("BatchStreamer: Peek blockNum mismatch",
 			"expected", s.nextBatchPos, "got", blockNum)
-		return nil
+		return nil, ErrPeekBlockNumMismatch
 	}
 	// Zero parentHash: channel manager has no tip yet, accept whatever is at head.
 	if parentHash == (common.Hash{}) || (*s.headBatch).Header().ParentHash == parentHash {
-		return s.headBatch
+		return s.headBatch, nil
 	}
 	// headBatch doesn't match the tip; scan the buffer for a fork at nextBatchPos
 	// whose parentHash does.
@@ -464,7 +471,7 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash
 				s.Log.Warn("BatchStreamer: failed to re-insert old headBatch into buffer", "err", err)
 			}
 			s.headBatch = &found
-			return s.headBatch
+			return s.headBatch, nil
 		}
 	}
 	s.Log.Info("BatchStreamer: no fork matches tip",
@@ -472,7 +479,7 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash
 		"tip", parentHash,
 		"headParent", (*s.headBatch).Header().ParentHash,
 	)
-	return nil
+	return nil, nil
 }
 
 // fetchHotShotRange is a helper method that will load all of the blocks from
