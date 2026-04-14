@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"math/rand"
 	"testing"
+	"time"
 
 	espressoClient "github.com/EspressoSystems/espresso-network/sdks/go/client"
 	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
@@ -255,12 +256,19 @@ func (m *MockStreamerSource) FetchLatestBlockHeight(ctx context.Context) (uint64
 	return m.LatestEspHeight, nil
 }
 
-func (m *MockStreamerSource) FetchHeadersByRange(ctx context.Context, from uint64, until uint64) ([]espressoCommon.HeaderImpl, error) {
-	var headers []espressoCommon.HeaderImpl
-	for h := from; h < until; h++ {
-		headers = append(headers, mockHeaderImpl(h))
+func (m *MockStreamerSource) FetchBlockSummaries(ctx context.Context, from *uint64, limit uint64) (espressoCommon.BlockSummaryResponse, error) {
+	if from == nil || limit == 0 {
+		return espressoCommon.BlockSummaryResponse{}, nil
 	}
-	return headers, nil
+	var summaries []espressoCommon.BlockSummary
+	for i := uint64(0); i < limit && *from >= i; i++ {
+		h := *from - i
+		summaries = append(summaries, espressoCommon.BlockSummary{
+			Height: h,
+			Time:   time.Unix(int64(h), 0).UTC().Format(time.RFC3339),
+		})
+	}
+	return espressoCommon.BlockSummaryResponse{BlockSummaries: summaries}, nil
 }
 
 // ErrorNotFound is a custom error type used to indicate that a requested
@@ -411,15 +419,6 @@ func (l *NoOpLogger) LogAttrs(ctx context.Context, level slog.Level, msg string,
 }
 func (l *NoOpLogger) SetContext(ctx context.Context)                                          {}
 func (l *NoOpLogger) WriteCtx(ctx context.Context, level slog.Level, msg string, args ...any) {}
-
-func mockHeaderImpl(height uint64) espressoCommon.HeaderImpl {
-	return espressoCommon.HeaderImpl{
-		Header: &espressoCommon.Header0_3{
-			Height:    height,
-			Timestamp: height,
-		},
-	}
-}
 
 func createHashFromHeight(height uint64) common.Hash {
 	var hash common.Hash
@@ -1542,7 +1541,7 @@ func TestFetchHotShotRangeRejectsZeroFinish(t *testing.T) {
 
 	_, streamer := setupStreamerTesting(42, common.Address{})
 
-	err := streamer.fetchHotShotRange(ctx, 0, 0, 0)
+	err := streamer.fetchHotShotRange(ctx, 0, 0)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "finish must be > 0")
 }

@@ -4,6 +4,8 @@ github.com/DataDog/zstd v1.5.6-0.20230824185856-869dae002e5e h1:ZIWapoIRN1VqT8GR
 github.com/DataDog/zstd v1.5.6-0.20230824185856-869dae002e5e/go.mod h1:g4AWEaM3yOg3HYfnJ3YIawPnVdXJh9QME85blwSAmyw=
 github.com/EspressoSystems/espresso-network/sdks/go v0.3.4 h1:1hf/k2rGqIGEGQW8O3fQFltPIyxSmumph8aKIa6AjCk=
 github.com/EspressoSystems/espresso-network/sdks/go v0.3.4/go.mod h1:kaxR08mJb5Mijy7a2RhWCIWOevFI4PcXwDkzoEbsVTk=
+github.com/EspressoSystems/espresso-network/sdks/go v0.3.5-0.20260414053503-aec5cfb97716 h1:lR3Uquq8BjLVxfHEJlbArxydVm+D6qbPrSFHirHCzzI=
+github.com/EspressoSystems/espresso-network/sdks/go v0.3.5-0.20260414053503-aec5cfb97716/go.mod h1:kaxR08mJb5Mijy7a2RhWCIWOevFI4PcXwDkzoEbsVTk=
 github.com/EspressoSystems/optimism-espresso-integration v0.0.0-20260320193702-1e85078aed7b h1:7XWJ3ZLlYrf9Oz5BmRssllw9S60LDDF/IFPKtb4mPH4=
 github.com/EspressoSystems/optimism-espresso-integration v0.0.0-20260320193702-1e85078aed7b/go.mod h1:yZLWZ4Vz0KfVVQ7XS2AD1EkSGX51MYxatscuCSQm8Ic=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=

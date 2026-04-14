@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/big"
 	"slices"
+	"sort"
 	"time"
 
 	"github.com/EspressoSystems/espresso-streamers/op/bindings"
@@ -54,7 +55,7 @@ type LightClientCallerInterface interface {
 type EspressoClient interface {
 	FetchLatestBlockHeight(ctx context.Context) (uint64, error)
 	FetchNamespaceTransactionsInRange(ctx context.Context, fromHeight uint64, toHeight uint64, namespace uint64) ([]espressoCommon.NamespaceTransactionsRangeData, error)
-	FetchHeadersByRange(ctx context.Context, fromHeight uint64, toHeight uint64) ([]espressoCommon.HeaderImpl, error)
+	FetchBlockSummaries(ctx context.Context, from *uint64, limit uint64) (espressoCommon.BlockSummaryResponse, error)
 }
 
 // L1Client is an interface that documents the methods we utilize for
@@ -379,7 +380,7 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 		}
 
 		// Process the new batches fetched from Espresso
-		if err := s.fetchHotShotRange(ctx, start, finish, finalizedBlockHeight); err != nil {
+		if err := s.fetchHotShotRange(ctx, start, finish); err != nil {
 			return fmt.Errorf("failed to process hotshot range: %w", err)
 		}
 
@@ -414,7 +415,7 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 // It will also update the hotShotPos to the last block processed, in order
 // to effectively keep track of the last block we have successfully fetched,
 // and therefore processed from Hotshot.
-func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish uint64, currentBlockHeight uint64) error {
+func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish uint64) error {
 	if finish == 0 {
 		return fmt.Errorf("fetchHotShotRange: finish must be > 0")
 	}
@@ -434,7 +435,7 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 	}
 	var headerTimestamps []uint64
 	if s.trackBatchTimestamp {
-		headerTimestamps = s.trackBatchFinalizationTimestamps(ctx, hotShotBlocks, start, finish, currentBlockHeight)
+		headerTimestamps = s.trackBatchFinalizationTimestamps(ctx, hotShotBlocks, start, finish)
 	}
 
 	// We want to keep track of the latest block we have processed.
@@ -473,35 +474,52 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 // only after block N+2 is produced, so the finalization time of block N is
 // the timestamp of block N+2.
 //
-// currentBlockHeight is used to cap the fetch range so we never request
-// headers for blocks that don't exist yet. Blocks near the chain tip whose
-// N+2 block hasn't been produced will simply have no finalization timestamp
-// recorded (timestamp = 0), which is already handled gracefully downstream.
+// It fetches block summaries for [start+2, end+2) via the explorer endpoint,
+// which provides one finalization timestamp per block in the input range.
 func (s *BatchStreamer[B]) trackBatchFinalizationTimestamps(ctx context.Context, hotshotBlocks []espressoCommon.NamespaceTransactionsRangeData,
-	start uint64, end uint64, currentBlockHeight uint64) []uint64 {
+	start uint64, end uint64) []uint64 {
 	if len(hotshotBlocks) == 0 {
 		return nil
 	}
-	// Fetch headers for blocks [start+2, finalizationEnd) so that headers[i]
-	// gives us the timestamp of block start+i+2 which is the finalization time
-	// of block start+i.
-	finalizationEnd := min(end+2, currentBlockHeight+1)
-	if start+2 >= finalizationEnd {
-		log.Info("start + 2 is greater than finalizationend", "start", start+2, "end", finalizationEnd)
+
+	// We need finalization timestamps for blocks [start, end).
+	// Block N's finalization time = timestamp of block N+2,
+	// so we fetch block summaries for heights [start+2, end+1] inclusive.
+	// That is end-start blocks total.
+	count := end - start
+	if count == 0 {
 		return nil
 	}
-	headers, err := s.EspressoClient.FetchHeadersByRange(ctx, start+2, finalizationEnd)
+
+	// FetchBlockSummaries returns blocks in descending order from `from`,
+	// so we start from the highest block we need (end+1) and request count entries.
+	fromHeight := end + 1
+	resp, err := s.EspressoClient.FetchBlockSummaries(ctx, &fromHeight, count)
 	if err != nil {
-		s.Log.Warn("failed to fetch finalization headers by range", "error", err)
+		s.Log.Warn("failed to fetch block summaries for finalization timestamps", "error", err)
 		return nil
 	}
-	headerTimestamps := make([]uint64, len(headers))
-	for i, header := range headers {
-		if header.Header != nil {
-			headerTimestamps[i] = header.Header.GetTimestamp()
-		} else {
-			log.Warn("header is not found")
+
+	summaries := resp.BlockSummaries
+	if len(summaries) == 0 {
+		s.Log.Warn("no block summaries returned for finalization timestamps", "from", fromHeight, "count", count)
+		return nil
+	}
+
+	// Sort ascending by height so index i corresponds to block start+2+i,
+	// which is the finalization block for hotshot block start+i.
+	sort.Slice(summaries, func(i, j int) bool {
+		return summaries[i].Height < summaries[j].Height
+	})
+
+	headerTimestamps := make([]uint64, len(summaries))
+	for i, bs := range summaries {
+		ts, parseErr := time.Parse(time.RFC3339, bs.Time)
+		if parseErr != nil {
+			s.Log.Warn("failed to parse block summary time", "height", bs.Height, "time", bs.Time, "error", parseErr)
+			continue
 		}
+		headerTimestamps[i] = uint64(ts.Unix())
 	}
 	return headerTimestamps
 }
