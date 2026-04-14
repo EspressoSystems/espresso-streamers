@@ -448,7 +448,12 @@ var batchAuthenticatorAddr = common.HexToAddress("0x0000000000000000000000000000
 // setupStreamerTesting initializes a MockStreamerSource and an EspressoStreamer
 // for testing purposes. It sets up the initial state of the MockStreamerSource
 // and returns both the MockStreamerSource and the EspressoStreamer.
-func setupStreamerTesting(namespace uint64, batcherAddress common.Address) (*MockStreamerSource, *BatchStreamer[derivation.EspressoBatch]) {
+func setupStreamerTesting(namespace uint64, batcherAddress common.Address, originBatchPos ...uint64) (*MockStreamerSource, *BatchStreamer[derivation.EspressoBatch]) {
+	batchPos := uint64(1)
+	if len(originBatchPos) > 0 {
+		batchPos = originBatchPos[0]
+	}
+
 	state := NewMockStreamerSource()
 	state.TeeBatcherAddr = batcherAddress
 
@@ -462,7 +467,7 @@ func setupStreamerTesting(namespace uint64, batcherAddress common.Address) (*Moc
 		logger,
 		derivation.CreateEspressoBatchUnmarshaler(),
 		0,
-		1,
+		batchPos,
 		batchAuthenticatorAddr,
 	)
 	if err != nil {
@@ -1365,6 +1370,74 @@ func TestStreamerBatchOrderingDeterminism(t *testing.T) {
 	})
 }
 
+// TestRefreshResetsWhenBatchPosLagsBehindSafeBatch verifies that Refresh triggers a
+// reset when BatchPos is at or behind the safe batch number (fallbackBatchPos).
+// This covers the scenario where another batcher (e.g. a non-tee batcher) has
+// advanced the safe batch number beyond our streamer's current position, so the
+// streamer must jump ahead to safe+1.
+func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
+	namespace := uint64(42)
+
+	t.Run("resets when BatchPos < safe batch number", func(t *testing.T) {
+		ctx := context.Background()
+
+		// originBatchPos=1 → BatchPos=2, fallbackBatchPos=1
+		state, streamer := setupStreamerTesting(namespace, batchAuthenticatorAddr)
+		require.Equal(t, uint64(2), streamer.nextBatchPos)
+
+		// Simulate another batcher advancing safe batch to 10.
+		// safeBatchNumber(10) != fallbackBatchPos(1) → no early return.
+		// After fallbackBatchPos is updated to 10, BatchPos(2) <= 10 → reset.
+		safeBatchNumber := uint64(10)
+		err := streamer.Refresh(ctx, state.FinalizedL1, safeBatchNumber, state.SafeL2.L1Origin)
+		require.NoError(t, err)
+
+		// After reset: BatchPos = fallbackBatchPos + 1 = 11
+		require.Equal(t, safeBatchNumber+1, streamer.nextBatchPos,
+			"BatchPos should advance to safeBatchNumber+1 after reset")
+		require.Equal(t, safeBatchNumber, streamer.fallbackBatchPos)
+	})
+
+	t.Run("resets when BatchPos == safe batch number", func(t *testing.T) {
+		ctx := context.Background()
+
+		// originBatchPos=1 → BatchPos=2, fallbackBatchPos=1
+		state, streamer := setupStreamerTesting(namespace, batchAuthenticatorAddr)
+		require.Equal(t, uint64(2), streamer.nextBatchPos)
+
+		// safeBatchNumber=2: equal to BatchPos.
+		// safeBatchNumber(2) != fallbackBatchPos(1) → no early return.
+		// After fallbackBatchPos is updated to 2, BatchPos(2) <= 2 → reset.
+		safeBatchNumber := uint64(2)
+		err := streamer.Refresh(ctx, state.FinalizedL1, safeBatchNumber, state.SafeL2.L1Origin)
+		require.NoError(t, err)
+
+		// After reset: BatchPos = fallbackBatchPos + 1 = 3
+		require.Equal(t, safeBatchNumber+1, streamer.nextBatchPos,
+			"BatchPos should advance to safeBatchNumber+1 after reset")
+		require.Equal(t, safeBatchNumber, streamer.fallbackBatchPos)
+	})
+
+	t.Run("no reset when BatchPos > safe batch number", func(t *testing.T) {
+		ctx := context.Background()
+
+		// originBatchPos=4 → BatchPos=5, fallbackBatchPos=4
+		state, streamer := setupStreamerTesting(namespace, batchAuthenticatorAddr, 4)
+		require.Equal(t, uint64(5), streamer.nextBatchPos)
+
+		streamer.nextBatchPos = 7
+
+		safeBatchNumber := uint64(5)
+		err := streamer.Refresh(ctx, state.FinalizedL1, safeBatchNumber, state.SafeL2.L1Origin)
+		require.NoError(t, err)
+
+		// No reset should happen
+		require.Equal(t, uint64(7), streamer.nextBatchPos,
+			"BatchPos should remain unchanged when it is ahead of safe batch number")
+		require.Equal(t, safeBatchNumber, streamer.fallbackBatchPos)
+	})
+}
+
 // TestPeek verifies that Peek returns the next batch without consuming it from the streamer.
 // Acceptance criteria:
 // - Peek returns a valid batch with the correct block number when batches are available.
@@ -1396,12 +1469,14 @@ func TestPeek(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, streamer.HasNext(ctx))
 
-		peeked, err := streamer.Peek(ctx, 0, common.Hash{})
+		// The mock createSingularBatch sets ParentHash = createHashFromHeight(l2Height),
+		// so we pass that as the parentHash to satisfy the non-zero check in Peek.
+		peeked, err := streamer.Peek(ctx, uint64(l2Height), createHashFromHeight(uint64(l2Height)))
 		require.NoError(t, err)
 		require.NotNil(t, peeked)
 		require.Equal(t, uint64(l2Height), (*peeked).Number())
 
-		peekedAgain, err := streamer.Peek(ctx, 0, common.Hash{})
+		peekedAgain, err := streamer.Peek(ctx, uint64(l2Height), createHashFromHeight(uint64(l2Height)))
 		require.NoError(t, err)
 		require.NotNil(t, peekedAgain)
 		require.Equal(t, (*peeked).Number(), (*peekedAgain).Number())
@@ -1427,4 +1502,64 @@ func TestPeek(t *testing.T) {
 		require.NoError(t, err)
 		require.Nil(t, peeked)
 	})
+}
+
+// TestUpdateReturnsErrorOnMaxUint64BlockHeight verifies that Update returns an error
+// when FetchLatestBlockHeight returns math.MaxUint64 (overflow guard).
+func TestUpdateReturnsErrorOnMaxUint64BlockHeight(t *testing.T) {
+	ctx := context.Background()
+
+	state, streamer := setupStreamerTesting(42, common.Address{})
+	state.LatestEspHeight = ^uint64(0) // math.MaxUint64
+
+	err := streamer.Update(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "overflows")
+}
+
+// TestFetchHotShotRangeRejectsZeroFinish verifies that fetchHotShotRange returns an error
+// when finish is 0.
+func TestFetchHotShotRangeRejectsZeroFinish(t *testing.T) {
+	ctx := context.Background()
+
+	_, streamer := setupStreamerTesting(42, common.Address{})
+
+	err := streamer.fetchHotShotRange(ctx, 0, 0)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "finish must be > 0")
+}
+
+// TestDuplicateHeadBatchDropped verifies that a batch whose Number and Hash
+// match the current headBatch is silently dropped and does not block progression.
+func TestDuplicateHeadBatchDropped(t *testing.T) {
+	namespace := uint64(42)
+	chainID := big.NewInt(int64(namespace))
+	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSigner := chainSignerFactory(chainID, common.Address{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	state, streamer := setupStreamerTesting(namespace, signerAddress)
+	rng := rand.New(rand.NewSource(11))
+
+	syncStatus := state.SyncStatus()
+	require.NoError(t, streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin))
+
+	_, _, _, espTxn1 := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, 1, chainSigner)
+	state.AddEspressoTransactionData(0, namespace, espTxn1)
+	// duplicate at different height
+	state.AddEspressoTransactionData(1, namespace, espTxn1)
+
+	_, _, _, espTxn2 := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, 2, chainSigner)
+	state.AddEspressoTransactionData(2, namespace, espTxn2)
+
+	require.NoError(t, streamer.Update(ctx))
+
+	require.True(t, streamer.HasNext(ctx))
+	require.Equal(t, uint64(1), streamer.Next(ctx).Number())
+
+	require.True(t, streamer.HasNext(ctx))
+	require.Equal(t, uint64(2), streamer.Next(ctx).Number())
 }

@@ -290,3 +290,14 @@ func TestBatchBufferGetOutOfBounds(t *testing.T) {
 	require.Nil(t, buffer.Get(1))
 	require.Nil(t, buffer.Get(100))
 }
+
+// TestBatchBufferGetNegativeIndex verifies Get returns nil for negative indices.
+func TestBatchBufferGetNegativeIndex(t *testing.T) {
+	buffer := NewBatchBuffer[mockBatch](10)
+
+	err := buffer.Insert(newMockBatch(1))
+	require.NoError(t, err)
+
+	require.Nil(t, buffer.Get(-1))
+	require.Nil(t, buffer.Get(-100))
+}
