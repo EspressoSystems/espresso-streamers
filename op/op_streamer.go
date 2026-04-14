@@ -587,6 +587,7 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 	}
 
 	if s.trackBatchTimestamp && hotshotTimestamp != 0 {
+		s.Log.Debug("Recording batch finalization timestamp", "batchHash", (*batch).Hash(), "hotshotTimestamp", hotshotTimestamp)
 		s.batchTimestamps.Add((*batch).Hash(), hotshotTimestamp)
 	}
 
