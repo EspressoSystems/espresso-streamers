@@ -406,11 +406,14 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash
 		if (*b).Number() == s.nextBatchPos && (*b).Header().ParentHash == parentHash {
 			// Found the right fork: swap it into headBatch.
 			found := *b
-			s.BatchBuffer.RemoveByHash(found.Hash())
-			if err := s.BatchBuffer.Insert(*s.headBatch); err != nil {
-				s.Log.Warn("BatchStreamer: failed to re-insert old headBatch into buffer", "err", err)
-			}
+			// s.BatchBuffer.RemoveByHash(found.Hash())
+			// if err := s.BatchBuffer.Insert(*s.headBatch); err != nil {
+			// 	s.Log.Warn("BatchStreamer: failed to re-insert old headBatch into buffer", "err", err)
+			// }
 			s.headBatch = &found
+			log.Info("setting head batch to correct fork", "tip", parentHash,
+				"headParent", (*s.headBatch).Header().ParentHash,
+				"blockNr", s.nextBatchPos)
 			return s.headBatch, nil
 		}
 	}
