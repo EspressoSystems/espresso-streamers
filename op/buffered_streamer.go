@@ -201,7 +201,7 @@ func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context, blockNum uint64,
 		if (*batch).Number() >= b.startingBatchPos {
 			return batch, nil
 		}
-		// Batch predates startingBatchPos; discard and try again.
+		// Discard the old batch and try again
 		b.streamer.Next(ctx)
 	}
 }
