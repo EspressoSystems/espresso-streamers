@@ -64,10 +64,9 @@ type EspressoStreamer[B Batch] interface {
 	// nil.
 	Next(ctx context.Context) *B
 
-	// Peek returns the next batch without consuming it. Returns ErrForkNotFound if
-	// the head batch's parentHash doesn't match — caller should call SeekToProperHead
-	// then retry. Returns ErrPeekBlockNumMismatch if blockNum is ahead of the streamer.
-	Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) (*B, error)
+	// Peek attempts to return the next batch from the streamer without advancing the streamer's position.
+	// If there are no batches left to read, at the moment of the call, it will return nil.
+	Peek(ctx context.Context) *B
 
 	// SeekToProperHead clears headBatch, drains stale/wrong-fork entries from
 	// the front of buffer, and will try to position buffer at correct parent hash

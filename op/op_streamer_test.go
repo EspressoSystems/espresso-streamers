@@ -1469,15 +1469,11 @@ func TestPeek(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, streamer.HasNext(ctx))
 
-		// The mock createSingularBatch sets ParentHash = createHashFromHeight(l2Height),
-		// so we pass that as the parentHash to satisfy the non-zero check in Peek.
-		peeked, err := streamer.Peek(ctx, uint64(l2Height), createHashFromHeight(uint64(l2Height)))
-		require.NoError(t, err)
+		peeked := streamer.Peek(ctx)
 		require.NotNil(t, peeked)
 		require.Equal(t, uint64(l2Height), (*peeked).Number())
 
-		peekedAgain, err := streamer.Peek(ctx, uint64(l2Height), createHashFromHeight(uint64(l2Height)))
-		require.NoError(t, err)
+		peekedAgain := streamer.Peek(ctx)
 		require.NotNil(t, peekedAgain)
 		require.Equal(t, (*peeked).Number(), (*peekedAgain).Number())
 
@@ -1498,8 +1494,7 @@ func TestPeek(t *testing.T) {
 		err = streamer.Update(ctx)
 		require.NoError(t, err)
 
-		peeked, err := streamer.Peek(ctx, 1, createHashFromHeight(1))
-		require.NoError(t, err)
+		peeked := streamer.Peek(ctx)
 		require.Nil(t, peeked)
 	})
 }
@@ -1548,18 +1543,16 @@ func TestSeekToProperHead(t *testing.T) {
 	require.NoError(t, streamer.BatchBuffer.Insert(wrongFork))
 	require.NoError(t, streamer.BatchBuffer.Insert(rightFork))
 
-	// Peek should promote wrongFork as headBatch and return ErrForkNotFound
-	// because its parentHash doesn't match the tip.
-	peeked, err := streamer.Peek(ctx, 1, correctParentHash)
-	require.ErrorIs(t, err, ErrForkNotFound)
-	require.Nil(t, peeked)
+	// Peek promotes wrongFork as headBatch. Caller checks parentHash and finds mismatch.
+	peeked := streamer.Peek(ctx)
+	require.NotNil(t, peeked)
+	require.NotEqual(t, correctParentHash, (*peeked).Header().ParentHash)
 
-	// SeekToProperHead should drain the wrong fork and position the buffer at rightFork.
+	// SeekToProperHead drains the wrong fork and positions the buffer at rightFork.
 	streamer.SeekToProperHead(correctParentHash)
 
 	// Now Peek should find rightFork and return it.
-	peeked, err = streamer.Peek(ctx, 1, correctParentHash)
-	require.NoError(t, err)
+	peeked = streamer.Peek(ctx)
 	require.NotNil(t, peeked)
 	require.Equal(t, correctParentHash, (*peeked).Header().ParentHash)
 }

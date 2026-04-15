@@ -132,9 +132,9 @@ func (m *MockStreamer[B]) Next(ctx context.Context) *B {
 }
 
 // Peek implements espresso.EspressoStreamer
-func (m *MockStreamer[B]) Peek(ctx context.Context, _ uint64, _ common.Hash) (*B, error) {
+func (m *MockStreamer[B]) Peek(ctx context.Context) *B {
 	batch := m.createBatch(m.position+1, m.currentSafeL1Origin)
-	return batch, nil
+	return batch
 }
 
 // GetFallbackHotshotPos implements espresso.EspressoStreamer
@@ -274,11 +274,11 @@ func TestBufferedStreamerPeek(t *testing.T) {
 
 		require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
 
-		peeked, _ := streamer.Peek(ctx, 0, common.Hash{})
+		peeked := streamer.Peek(ctx)
 		require.NotNil(t, peeked)
 		require.Equal(t, uint64(1), (*peeked).Number())
 
-		peekedAgain, _ := streamer.Peek(ctx, 0, common.Hash{})
+		peekedAgain := streamer.Peek(ctx)
 		require.NotNil(t, peekedAgain)
 		require.Equal(t, (*peeked).Number(), (*peekedAgain).Number())
 
@@ -286,7 +286,7 @@ func TestBufferedStreamerPeek(t *testing.T) {
 		require.NotNil(t, consumed)
 		require.Equal(t, (*peeked).Number(), (*consumed).Number())
 
-		nextPeeked, _ := streamer.Peek(ctx, 0, common.Hash{})
+		nextPeeked := streamer.Peek(ctx)
 		require.NotNil(t, nextPeeked)
 		require.Equal(t, uint64(2), (*nextPeeked).Number())
 	})
@@ -300,11 +300,11 @@ func TestBufferedStreamerPeek(t *testing.T) {
 
 		require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
 
-		peeked, _ := streamer.Peek(ctx, 0, common.Hash{})
+		peeked := streamer.Peek(ctx)
 		require.NotNil(t, peeked)
 		require.Equal(t, uint64(1), (*peeked).Number())
 
-		peekedAgain, _ := streamer.Peek(ctx, 0, common.Hash{})
+		peekedAgain := streamer.Peek(ctx)
 		require.NotNil(t, peekedAgain)
 		require.Equal(t, (*peeked).Number(), (*peekedAgain).Number())
 	})
@@ -318,7 +318,7 @@ func TestBufferedStreamerPeek(t *testing.T) {
 
 		require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 5, eth.BlockID{Number: 10}))
 
-		peeked, _ := streamer.Peek(ctx, 0, common.Hash{})
+		peeked := streamer.Peek(ctx)
 		require.NotNil(t, peeked)
 		require.Equal(t, uint64(5), (*peeked).Number())
 	})

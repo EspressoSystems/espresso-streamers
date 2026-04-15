@@ -21,22 +21,17 @@ import (
 
 const BatchBufferCapacity uint64 = 1024
 
-// ErrPeekBlockNumMismatch is returned by Peek when the streamer's internal
-// next-batch position doesn't match the requested blockNum, indicating the
-// streamer needs to be re-synced
-var ErrPeekBlockNumMismatch = errors.New("peek blockNum mismatch")
-
-// ErrForkNotFound is returned by Peek when a batch exists for the expected
-// block number but none of them match the requested parentHash (i.e. wrong fork).
-// The caller should respond by calling SeekToProperHead to search the buffer.
-var ErrForkNotFound = errors.New("no batch in head matches the requested parent hash")
-
 // DroppingBatchLogPrefix is the log message prefix used when dropping a batch.
 //
 // NOTE: It is referenced by the DroppingBatch constant in logmodule/log_keys.go of the
 // optimism-espresso-integration repo for log investigation. Any change here must be reflected
 // there too.
 const DroppingBatchLogPrefix = "Dropping batch"
+
+// ErrPeekBlockNumMismatch is returned by Peek when the streamer's internal
+// next-batch position doesn't match the requested blockNum, indicating the
+// streamer needs to be re-synced
+var ErrPeekBlockNumMismatch = errors.New("peek blockNum mismatch")
 
 // Espresso light client bindings don't have an explicit name for this struct,
 // so we define it here to avoid spelling it out every time
@@ -392,35 +387,12 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 	return nil
 }
 
-// Peek returns the next batch without consuming it. Returns ErrForkNotFound if
-// the head batch's parentHash doesn't match — caller should call SeekToProperHead
-// then retry. Returns ErrPeekBlockNumMismatch if blockNum is ahead of the streamer.
-func (s *BatchStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) (*B, error) {
-	if parentHash == (common.Hash{}) {
-		return nil, fmt.Errorf("peek called with zero parentHash — caller must initialize tip before calling peek")
+// Peek returns the next valid batch without consuming it.
+func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
+	if s.HasNext(ctx) {
+		return s.headBatch
 	}
-
-	if blockNum != 0 && blockNum > s.nextBatchPos {
-		s.Log.Info("peek called but mismatch between next batch pos tip block number",
-			"nextBatch Pos", s.nextBatchPos, "tip blockNr", blockNum)
-		return nil, ErrPeekBlockNumMismatch
-	}
-
-	if !s.HasNext(ctx) {
-		return nil, nil
-	}
-
-	if (*s.headBatch).Header().ParentHash == parentHash {
-		return s.headBatch, nil
-	}
-
-	s.Log.Warn(
-		"no fork matches tip",
-		"blockNr", s.nextBatchPos,
-		"tip", parentHash,
-		"headParent", (*s.headBatch).Header().ParentHash,
-	)
-	return nil, ErrForkNotFound
+	return nil
 }
 
 // SeekToProperHead clears headBatch and drains stale/wrong-fork entries from

@@ -189,17 +189,17 @@ func (b *BufferedEspressoStreamer[B]) SeekToProperHead(parentHash common.Hash) {
 	b.streamer.SeekToProperHead(parentHash)
 }
 
-func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) (*B, error) {
+func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context) *B {
+	if b.readPos < uint64(len(b.batches)) {
+		return b.batches[b.readPos]
+	}
 	for {
-		batch, err := b.streamer.Peek(ctx, blockNum, parentHash)
-		if err != nil {
-			return nil, err
-		}
+		batch := b.streamer.Peek(ctx)
 		if batch == nil {
-			return nil, nil
+			return nil
 		}
 		if (*batch).Number() >= b.startingBatchPos {
-			return batch, nil
+			return batch
 		}
 		// Discard the old batch and try again
 		b.streamer.Next(ctx)
