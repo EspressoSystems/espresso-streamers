@@ -390,10 +390,19 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 	return nil
 }
 
-// SeekToProperHead clears headBatch and drains stale/wrong-fork entries from
-// the front of the buffer, positioning it at the correct fork for the next
-// HasNext/Peek call. Intended to be called after Peek returns ErrForkNotFound.
+// SeekToProperHead drains stale/wrong-fork entries from the buffer, positioning
+// it at the correct fork for the next HasNext/Peek call. If headBatch's block
+// number doesn't match nextBatchPos the mismatch is at the channel manager level
+// rather than a fork issue, so we exit early without touching anything.
 func (s *BatchStreamer[B]) SeekToProperHead(parentHash common.Hash) {
+	if s.headBatch != nil && (*s.headBatch).Number() != s.nextBatchPos {
+		s.Log.Warn(
+			"headBatch block number mismatch",
+			"headNum", (*s.headBatch).Number(),
+			"nextBatchPos", s.nextBatchPos,
+		)
+		return
+	}
 	s.headBatch = nil
 	for {
 		head := s.BatchBuffer.Peek()
