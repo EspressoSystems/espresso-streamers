@@ -28,11 +28,6 @@ const BatchBufferCapacity uint64 = 1024
 // there too.
 const DroppingBatchLogPrefix = "Dropping batch"
 
-// ErrPeekBlockNumMismatch is returned by Peek when the streamer's internal
-// next-batch position doesn't match the requested blockNum, indicating the
-// streamer needs to be re-synced
-var ErrPeekBlockNumMismatch = errors.New("peek blockNum mismatch")
-
 // Espresso light client bindings don't have an explicit name for this struct,
 // so we define it here to avoid spelling it out every time
 type FinalizedState = struct {
