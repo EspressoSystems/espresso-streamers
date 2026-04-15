@@ -24,12 +24,12 @@ const BatchBufferCapacity uint64 = 1024
 // ErrPeekBlockNumMismatch is returned by Peek when the streamer's internal
 // next-batch position doesn't match the requested blockNum, indicating the
 // streamer needs to be re-synced
-var ErrPeekBlockNumMismatch = errors.New("Peek blockNum mismatch")
+var ErrPeekBlockNumMismatch = errors.New("peek blockNum mismatch")
 
 // ErrForkNotFound is returned by Peek when a batch exists for the expected
 // block number but none of them match the requested parentHash (i.e. wrong fork).
 // The caller should respond by calling SeekToProperHead to search the buffer.
-var ErrForkNotFound = errors.New("No batch in head matches the requested parent hash")
+var ErrForkNotFound = errors.New("no batch in head matches the requested parent hash")
 
 // DroppingBatchLogPrefix is the log message prefix used when dropping a batch.
 //
