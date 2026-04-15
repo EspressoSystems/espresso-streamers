@@ -424,12 +424,13 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 	s.Log.Debug("Fetching HotShot block range", "start", start, "finish", finish)
 
 	// FetchNamespaceTransactionsInRange fetches transactions in [start, finish)
+	startTime := time.Now()
 	hotShotBlocks, err := s.EspressoClient.FetchNamespaceTransactionsInRange(ctx, start, finish, s.Namespace)
 	if err != nil {
 		return err
 	}
 
-	s.Log.Info("Fetched HotShot block range", "start", start, "finish", finish, "numHotShotBlocks", len(hotShotBlocks))
+	s.Log.Info("Fetched HotShot block range", "start", start, "finish", finish, "numHotShotBlocks", len(hotShotBlocks), "fetchDuration", time.Since(startTime))
 	if len(hotShotBlocks) == 0 {
 		s.Log.Debug("No transactions in hotshot block range", "start", start, "finish", finish)
 		return nil
@@ -495,6 +496,7 @@ func (s *BatchStreamer[B]) trackBatchFinalizationTimestamps(ctx context.Context,
 	// FetchBlockSummaries returns blocks in descending order from `from`,
 	// so we start from the highest block we need (end+1) and request count entries.
 	fromHeight := end + 1
+	startTime := time.Now()
 	resp, err := s.EspressoClient.FetchBlockSummaries(ctx, &fromHeight, count)
 	if err != nil {
 		s.Log.Warn("failed to fetch block summaries for finalization timestamps", "error", err)
@@ -508,7 +510,7 @@ func (s *BatchStreamer[B]) trackBatchFinalizationTimestamps(ctx context.Context,
 	}
 
 	s.Log.Info("Fetched block summaries for finalization timestamps",
-		"requested_from", fromHeight, "requested_count", count, "returned_count", len(summaries))
+		"requested_from", fromHeight, "requested_count", count, "returned_count", len(summaries), "fetchDuration", time.Since(startTime))
 
 	// Sort ascending by height so index i corresponds to block start+2+i,
 	// which is the finalization block for hotshot block start+i.
