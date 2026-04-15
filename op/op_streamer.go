@@ -597,14 +597,12 @@ func (s *BatchStreamer[B]) HasNext(ctx context.Context) bool {
 	for {
 		if s.headBatch == nil {
 			nextBuffered := s.BatchBuffer.Peek()
-			if nextBuffered == nil {
+			if nextBuffered != nil && (*nextBuffered).Number() == s.nextBatchPos {
+				s.headBatch = nextBuffered
+				s.BatchBuffer.Pop()
+			} else {
 				return false
 			}
-			if (*nextBuffered).Number() != s.nextBatchPos {
-				return false
-			}
-			s.headBatch = nextBuffered
-			s.BatchBuffer.Pop()
 		}
 
 		validity := s.CheckBatch(ctx, *s.headBatch)
