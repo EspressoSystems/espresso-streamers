@@ -421,7 +421,7 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 	}
 
 	// Process the new batches fetched from Espresso
-	s.Log.Trace("Fetching HotShot block range", "start", start, "finish", finish)
+	s.Log.Debug("Fetching HotShot block range", "start", start, "finish", finish)
 
 	// FetchNamespaceTransactionsInRange fetches transactions in [start, finish)
 	hotShotBlocks, err := s.EspressoClient.FetchNamespaceTransactionsInRange(ctx, start, finish, s.Namespace)
@@ -431,7 +431,8 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 
 	s.Log.Info("Fetched HotShot block range", "start", start, "finish", finish, "numHotShotBlocks", len(hotShotBlocks))
 	if len(hotShotBlocks) == 0 {
-		s.Log.Trace("No transactions in hotshot block range", "start", start, "finish", finish)
+		s.Log.Debug("No transactions in hotshot block range", "start", start, "finish", finish)
+		return nil
 	}
 	var headerTimestamps []uint64
 	if s.trackBatchTimestamp {
@@ -506,6 +507,9 @@ func (s *BatchStreamer[B]) trackBatchFinalizationTimestamps(ctx context.Context,
 		return nil
 	}
 
+	s.Log.Info("Fetched block summaries for finalization timestamps",
+		"requested_from", fromHeight, "requested_count", count, "returned_count", len(summaries))
+
 	// Sort ascending by height so index i corresponds to block start+2+i,
 	// which is the finalization block for hotshot block start+i.
 	sort.Slice(summaries, func(i, j int) bool {
@@ -520,6 +524,9 @@ func (s *BatchStreamer[B]) trackBatchFinalizationTimestamps(ctx context.Context,
 			continue
 		}
 		headerTimestamps[i] = uint64(ts.Unix())
+		s.Log.Info("Block summary finalization timestamp",
+			"index", i, "block_height", bs.Height, "expected_height", start+2+uint64(i),
+			"time_raw", bs.Time, "timestamp_unix", headerTimestamps[i])
 	}
 	return headerTimestamps
 }
