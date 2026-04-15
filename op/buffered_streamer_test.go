@@ -274,6 +274,13 @@ func TestBufferedStreamerPeek(t *testing.T) {
 
 		require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
 
+		for i := uint64(1); i <= 5; i++ {
+			batch := streamer.Next(ctx)
+			require.Equal(t, i, batch.Number())
+		}
+
+		streamer.Reset()
+
 		peeked := streamer.Peek(ctx)
 		require.NotNil(t, peeked)
 		require.Equal(t, uint64(1), (*peeked).Number())

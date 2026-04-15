@@ -82,6 +82,7 @@ func (b *BufferedEspressoStreamer[B]) handleL2PositionUpdate(nextPosition uint64
 		// we no longer will need to refer to older batches.  So instead, we
 		// will want to adjust the buffer, and read position based on the
 		// new nextPosition.
+
 		positionAdjustment := nextPosition - b.startingBatchPos
 		if positionAdjustment <= uint64(len(b.batches)) {
 			// Nil out pointers to allow garbage collection
@@ -134,6 +135,7 @@ func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context, finalizedL1 e
 // Reset resets the buffered streamer state to the last known good
 // safe batch position.
 func (b *BufferedEspressoStreamer[B]) Reset() {
+	// Reset the buffered streamer state
 	b.readPos = 0
 }
 
