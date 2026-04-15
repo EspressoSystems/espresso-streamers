@@ -7,7 +7,6 @@ import (
 	"math"
 	"math/big"
 	"slices"
-	"sort"
 	"time"
 
 	"github.com/EspressoSystems/espresso-streamers/op/bindings"
@@ -435,9 +434,14 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 		s.Log.Debug("No transactions in hotshot block range", "start", start, "finish", finish)
 		return nil
 	}
+	fetchedTime := time.Now()
 	var headerTimestamps []uint64
 	if s.trackBatchTimestamp {
-		headerTimestamps = s.trackBatchFinalizationTimestamps(ctx, hotShotBlocks, start, finish)
+		// initialize all timestamps to fetchedTime
+		headerTimestamps = make([]uint64, len(hotShotBlocks))
+		for i := range headerTimestamps {
+			headerTimestamps[i] = uint64(fetchedTime.Unix())
+		}
 	}
 
 	// We want to keep track of the latest block we have processed.
@@ -469,68 +473,6 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 	}
 
 	return nil
-}
-
-// trackBatchFinalizationTimestamps fetches the finalization timestamps for the
-// given range of HotShot blocks. In HotShot, block N is considered finalized
-// only after block N+2 is produced, so the finalization time of block N is
-// the timestamp of block N+2.
-//
-// It fetches block summaries for [start+2, end+2) via the explorer endpoint,
-// which provides one finalization timestamp per block in the input range.
-func (s *BatchStreamer[B]) trackBatchFinalizationTimestamps(ctx context.Context, hotshotBlocks []espressoCommon.NamespaceTransactionsRangeData,
-	start uint64, end uint64) []uint64 {
-	if len(hotshotBlocks) == 0 {
-		return nil
-	}
-
-	// We need finalization timestamps for blocks [start, end).
-	// Block N's finalization time = timestamp of block N+2,
-	// so we fetch block summaries for heights [start+2, end+1] inclusive.
-	// That is end-start blocks total.
-	count := end - start
-	if count == 0 {
-		return nil
-	}
-
-	// FetchBlockSummaries returns blocks in descending order from `from`,
-	// so we start from the highest block we need (end+1) and request count entries.
-	fromHeight := end + 1
-	startTime := time.Now()
-	resp, err := s.EspressoClient.FetchBlockSummaries(ctx, &fromHeight, count)
-	if err != nil {
-		s.Log.Warn("failed to fetch block summaries for finalization timestamps", "error", err)
-		return nil
-	}
-
-	summaries := resp.BlockSummaries
-	if len(summaries) == 0 {
-		s.Log.Warn("no block summaries returned for finalization timestamps", "from", fromHeight, "count", count)
-		return nil
-	}
-
-	s.Log.Info("Fetched block summaries for finalization timestamps",
-		"requested_from", fromHeight, "requested_count", count, "returned_count", len(summaries), "fetchDuration", time.Since(startTime))
-
-	// Sort ascending by height so index i corresponds to block start+2+i,
-	// which is the finalization block for hotshot block start+i.
-	sort.Slice(summaries, func(i, j int) bool {
-		return summaries[i].Height < summaries[j].Height
-	})
-
-	headerTimestamps := make([]uint64, len(summaries))
-	for i, bs := range summaries {
-		ts, parseErr := time.Parse(time.RFC3339, bs.Time)
-		if parseErr != nil {
-			s.Log.Warn("failed to parse block summary time", "height", bs.Height, "time", bs.Time, "error", parseErr)
-			continue
-		}
-		headerTimestamps[i] = uint64(ts.Unix())
-		s.Log.Info("Block summary finalization timestamp",
-			"index", i, "block_height", bs.Height, "expected_height", start+2+uint64(i),
-			"time_raw", bs.Time, "timestamp_unix", headerTimestamps[i])
-	}
-	return headerTimestamps
 }
 
 // processEspressoTransaction is a helper method that encapsulates the logic of
