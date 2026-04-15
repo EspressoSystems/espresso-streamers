@@ -71,6 +71,11 @@ type EspressoStreamer[B Batch] interface {
 	// Returns ErrPeekBlockNumMismatch if the streamer's position doesn't match blockNum.
 	Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) (*B, error)
 
+	// PopByParentHash clears headBatch, drains stale/wrong-fork entries from
+	// the buffer front, and positions the buffer at the correct fork for the
+	// next HasNext/Peek call. Intended to be called after Peek returns ErrForkNotFound.
+	PopByParentHash(blockNum uint64, parentHash common.Hash)
+
 	// GetFallbackHotshotPos returns the fallback hotshot position
 	GetFallbackHotshotPos() uint64
 }

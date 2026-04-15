@@ -24,7 +24,12 @@ const BatchBufferCapacity uint64 = 1024
 // ErrPeekBlockNumMismatch is returned by Peek when the streamer's internal
 // next-batch position doesn't match the requested blockNum, indicating the
 // streamer needs to be re-synced (e.g. after a reorg).
-var ErrPeekBlockNumMismatch = errors.New("BatchStreamer: Peek blockNum mismatch")
+var ErrPeekBlockNumMismatch = errors.New("Peek blockNum mismatch")
+
+// ErrForkNotFound is returned by Peek when a batch exists for the expected
+// block number but none of them match the requested parentHash (i.e. wrong fork).
+// The caller should respond by calling PopByParentHash to search the buffer.
+var ErrForkNotFound = errors.New("No batch in head matches the requested parent hash")
 
 // DroppingBatchLogPrefix is the log message prefix used when dropping a batch.
 //
@@ -410,12 +415,39 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash
 		return s.headBatch, nil
 	}
 
-	s.Log.Warn("no fork matches tip",
+	s.Log.Warn("no fork matches tip, caller should try PopByParentHash",
 		"blockNr", s.nextBatchPos,
 		"tip", parentHash,
 		"headParent", (*s.headBatch).Header().ParentHash,
 	)
-	return nil, nil
+	return nil, ErrForkNotFound
+}
+
+// PopByParentHash drains any stale entries (Number < nextBatchPos) from the
+// front of the buffer, then searches for a batch at blockNum whose ParentHash
+// matches parentHash, removes it, and returns it. Returns nil if not found.
+func (s *BatchStreamer[B]) PopByParentHash(blockNum uint64, parentHash common.Hash) {
+	s.headBatch = nil
+	for {
+		head := s.BatchBuffer.Peek()
+		if head == nil {
+			break
+		}
+		bufferedParent := (*head).Header().ParentHash
+		if (*head).Number() < s.nextBatchPos || (*head).Header().ParentHash != parentHash {
+			s.Log.Warn(
+				"discarding stale buffered batch",
+				"bufferNum", (*head).Number(),
+				"nextBatchPos", s.nextBatchPos,
+				"headParentHash", bufferedParent.Hex(),
+				"targetParentHash", parentHash.Hex(),
+			)
+			s.BatchBuffer.Pop()
+			continue
+		}
+
+		break
+	}
 }
 
 // fetchHotShotRange is a helper method that will load all of the blocks from
@@ -564,25 +596,15 @@ func (s *BatchStreamer[B]) Next(ctx context.Context) *B {
 func (s *BatchStreamer[B]) HasNext(ctx context.Context) bool {
 	for {
 		if s.headBatch == nil {
-			for {
-				nextBuffered := s.BatchBuffer.Peek()
-				if nextBuffered == nil {
-					return false
-				}
-				n := (*nextBuffered).Number()
-				if n < s.nextBatchPos {
-					s.Log.Warn("discarding stale buffered batch",
-						"bufferNum", n, "nextBatchPos", s.nextBatchPos)
-					s.BatchBuffer.Pop()
-					continue
-				}
-				if n > s.nextBatchPos {
-					return false
-				}
-				s.headBatch = nextBuffered
-				s.BatchBuffer.Pop()
-				break
+			nextBuffered := s.BatchBuffer.Peek()
+			if nextBuffered == nil {
+				return false
 			}
+			if (*nextBuffered).Number() != s.nextBatchPos {
+				return false
+			}
+			s.headBatch = nextBuffered
+			s.BatchBuffer.Pop()
 		}
 
 		validity := s.CheckBatch(ctx, *s.headBatch)

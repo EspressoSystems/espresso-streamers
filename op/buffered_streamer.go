@@ -185,13 +185,15 @@ func (b *BufferedEspressoStreamer[B]) GetFallbackHotshotPos() uint64 {
 	return b.streamer.GetFallbackHotshotPos()
 }
 
+// PopByParentHash delegates to the underlying streamer.
+func (b *BufferedEspressoStreamer[B]) PopByParentHash(blockNum uint64, parentHash common.Hash) {
+	b.streamer.PopByParentHash(blockNum, parentHash)
+}
+
 func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) (*B, error) {
 	for {
 		batch, err := b.streamer.Peek(ctx, blockNum, parentHash)
 		if err != nil {
-			// if errors.Is(err, ErrPeekBlockNumMismatch) {
-			// 	b.Reset()
-			// }
 			return nil, err
 		}
 		if batch == nil {

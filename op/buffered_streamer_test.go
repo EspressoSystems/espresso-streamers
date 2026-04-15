@@ -142,6 +142,9 @@ func (m *MockStreamer[B]) GetFallbackHotshotPos() uint64 {
 	return m.fallbackHotshotPos
 }
 
+// PopByParentHash implements espresso.EspressoStreamer
+func (m *MockStreamer[B]) PopByParentHash(_ uint64, _ common.Hash) {}
+
 // TestMockStreamerBasicFunctionality tests the basic functionality of the
 // MockStreamer, including batch creation, position tracking, and reset
 // behavior.
