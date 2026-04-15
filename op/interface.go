@@ -68,9 +68,10 @@ type EspressoStreamer[B Batch] interface {
 	// If there are no batches left to read, at the moment of the call, it will return nil.
 	Peek(ctx context.Context) *B
 
-	// SeekToProperHead clears headBatch, drains stale/wrong-fork entries from
-	// the front of buffer, and will try to position buffer at correct parent hash
-	// Intended to be called after Peek returns ErrForkNotFound.
+	// SeekToProperHead drains stale/wrong-fork entries from the buffer front,
+	// positioning it at the correct fork for the next Peek call. Should be called
+	// when Peek returns a batch whose parentHash doesn't match the current chain tip.
+	// No-ops if headBatch's block number doesn't match the expected next batch position.
 	SeekToProperHead(parentHash common.Hash)
 
 	// GetFallbackHotshotPos returns the fallback hotshot position
