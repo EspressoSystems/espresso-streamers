@@ -2,7 +2,6 @@ package op
 
 import (
 	"context"
-	"errors"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
@@ -136,7 +135,7 @@ func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context, finalizedL1 e
 // safe batch position.
 func (b *BufferedEspressoStreamer[B]) Reset() {
 	b.readPos = 0
-	b.streamer.Reset()
+	// b.streamer.Reset()
 }
 
 // HasNext implements EspressoStreamerIFace
@@ -190,9 +189,9 @@ func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context, blockNum uint64,
 	for {
 		batch, err := b.streamer.Peek(ctx, blockNum, parentHash)
 		if err != nil {
-			if errors.Is(err, ErrPeekBlockNumMismatch) {
-				b.Reset()
-			}
+			// if errors.Is(err, ErrPeekBlockNumMismatch) {
+			// 	b.Reset()
+			// }
 			return nil, err
 		}
 		if batch == nil {

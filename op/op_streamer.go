@@ -392,48 +392,25 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 // the buffer is scanned for a same-position fork that does, and headBatch is
 // swapped. Returns nil if no matching fork is available yet.
 func (s *BatchStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) (*B, error) {
+	if parentHash == (common.Hash{}) {
+		return nil, fmt.Errorf("peek called with zero parentHash — caller must initialize tip before calling peek")
+	}
+
 	if blockNum != 0 && blockNum > s.nextBatchPos {
-		s.Log.Info("BatchStreamer: Peek fast-forwarding nextBatchPos",
-			"from", s.nextBatchPos, "to", blockNum)
-		s.nextBatchPos = blockNum
-		s.headBatch = nil
+		s.Log.Info("peek called but mismatch between next batch pos tip block number",
+			"nextBatch Pos", s.nextBatchPos, "tip blockNr", blockNum)
+		return nil, ErrPeekBlockNumMismatch
 	}
 
 	if !s.HasNext(ctx) {
 		return nil, nil
 	}
 
-	if blockNum != 0 && s.nextBatchPos != blockNum {
-		s.Log.Warn("BatchStreamer: Peek blockNum mismatch",
-			"expected", s.nextBatchPos, "got", blockNum)
-		return nil, ErrPeekBlockNumMismatch
-	}
-	if parentHash == (common.Hash{}) {
-		s.Log.Error("Peek called with zero parentHash — tip was not initialized")
-		return nil, fmt.Errorf("BatchStreamer: Peek called with zero parentHash — caller must initialize tip before calling Peek")
-	}
 	if (*s.headBatch).Header().ParentHash == parentHash {
 		return s.headBatch, nil
 	}
-	// headBatch doesn't match the tip try to find correct parent hash
-	for i := 0; i < s.BatchBuffer.Len(); i++ {
-		b := s.BatchBuffer.Get(i)
-		if b == nil || (*b).Number() > s.nextBatchPos {
-			break
-		}
-		if (*b).Number() == s.nextBatchPos && (*b).Header().ParentHash == parentHash {
-			// Found the right fork: swap it into headBatch.
-			found := *b
-			s.headBatch = &found
-			log.Info("BatchStreamer: setting head batch to correct fork",
-				"tip", parentHash,
-				"headParent", (*s.headBatch).Header().ParentHash,
-				"blockNr", s.nextBatchPos,
-			)
-			return s.headBatch, nil
-		}
-	}
-	s.Log.Info("BatchStreamer: no fork matches tip",
+
+	s.Log.Warn("no fork matches tip",
 		"blockNr", s.nextBatchPos,
 		"tip", parentHash,
 		"headParent", (*s.headBatch).Header().ParentHash,
@@ -594,7 +571,7 @@ func (s *BatchStreamer[B]) HasNext(ctx context.Context) bool {
 				}
 				n := (*nextBuffered).Number()
 				if n < s.nextBatchPos {
-					s.Log.Info("HasNext: discarding stale buffered batch",
+					s.Log.Warn("discarding stale buffered batch",
 						"bufferNum", n, "nextBatchPos", s.nextBatchPos)
 					s.BatchBuffer.Pop()
 					continue
