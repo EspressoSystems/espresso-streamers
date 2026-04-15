@@ -135,7 +135,6 @@ func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context, finalizedL1 e
 // safe batch position.
 func (b *BufferedEspressoStreamer[B]) Reset() {
 	b.readPos = 0
-	// b.streamer.Reset()
 }
 
 // HasNext implements EspressoStreamerIFace
@@ -185,9 +184,9 @@ func (b *BufferedEspressoStreamer[B]) GetFallbackHotshotPos() uint64 {
 	return b.streamer.GetFallbackHotshotPos()
 }
 
-// PopByParentHash delegates to the underlying streamer.
-func (b *BufferedEspressoStreamer[B]) PopByParentHash(blockNum uint64, parentHash common.Hash) {
-	b.streamer.PopByParentHash(blockNum, parentHash)
+// SeekToProperHead delegates to the underlying streamer.
+func (b *BufferedEspressoStreamer[B]) SeekToProperHead(parentHash common.Hash) {
+	b.streamer.SeekToProperHead(parentHash)
 }
 
 func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) (*B, error) {

@@ -23,12 +23,12 @@ const BatchBufferCapacity uint64 = 1024
 
 // ErrPeekBlockNumMismatch is returned by Peek when the streamer's internal
 // next-batch position doesn't match the requested blockNum, indicating the
-// streamer needs to be re-synced (e.g. after a reorg).
+// streamer needs to be re-synced
 var ErrPeekBlockNumMismatch = errors.New("Peek blockNum mismatch")
 
 // ErrForkNotFound is returned by Peek when a batch exists for the expected
 // block number but none of them match the requested parentHash (i.e. wrong fork).
-// The caller should respond by calling PopByParentHash to search the buffer.
+// The caller should respond by calling SeekToProperHead to search the buffer.
 var ErrForkNotFound = errors.New("No batch in head matches the requested parent hash")
 
 // DroppingBatchLogPrefix is the log message prefix used when dropping a batch.
@@ -392,10 +392,9 @@ func (s *BatchStreamer[B]) Update(ctx context.Context) error {
 	return nil
 }
 
-// Peek returns the batch at the current position whose parentHash matches the
-// provided tip, without advancing the position. If headBatch doesn't match,
-// the buffer is scanned for a same-position fork that does, and headBatch is
-// swapped. Returns nil if no matching fork is available yet.
+// Peek returns the next batch without consuming it. Returns ErrForkNotFound if
+// the head batch's parentHash doesn't match — caller should call SeekToProperHead
+// then retry. Returns ErrPeekBlockNumMismatch if blockNum is ahead of the streamer.
 func (s *BatchStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) (*B, error) {
 	if parentHash == (common.Hash{}) {
 		return nil, fmt.Errorf("peek called with zero parentHash — caller must initialize tip before calling peek")
@@ -415,7 +414,8 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash
 		return s.headBatch, nil
 	}
 
-	s.Log.Warn("no fork matches tip, caller should try PopByParentHash",
+	s.Log.Warn(
+		"no fork matches tip",
 		"blockNr", s.nextBatchPos,
 		"tip", parentHash,
 		"headParent", (*s.headBatch).Header().ParentHash,
@@ -423,10 +423,10 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context, blockNum uint64, parentHash
 	return nil, ErrForkNotFound
 }
 
-// PopByParentHash drains any stale entries (Number < nextBatchPos) from the
-// front of the buffer, then searches for a batch at blockNum whose ParentHash
-// matches parentHash, removes it, and returns it. Returns nil if not found.
-func (s *BatchStreamer[B]) PopByParentHash(blockNum uint64, parentHash common.Hash) {
+// SeekToProperHead clears headBatch and drains stale/wrong-fork entries from
+// the front of the buffer, positioning it at the correct fork for the next
+// HasNext/Peek call. Intended to be called after Peek returns ErrForkNotFound.
+func (s *BatchStreamer[B]) SeekToProperHead(parentHash common.Hash) {
 	s.headBatch = nil
 	for {
 		head := s.BatchBuffer.Peek()

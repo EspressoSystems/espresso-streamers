@@ -112,4 +112,3 @@ func (b *BatchBuffer[B]) Pop() *B {
 
 	return &batch
 }
-

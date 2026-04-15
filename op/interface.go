@@ -64,17 +64,15 @@ type EspressoStreamer[B Batch] interface {
 	// nil.
 	Next(ctx context.Context) *B
 
-	// Peek returns the batch at the current position whose block number equals blockNum
-	// and whose parentHash matches the provided tip, without advancing the position.
-	// If no fork matches, returns nil. A zero blockNum or zero parentHash skips that
-	// check (channel manager has no tip yet; any fork is accepted).
-	// Returns ErrPeekBlockNumMismatch if the streamer's position doesn't match blockNum.
+	// Peek returns the next batch without consuming it. Returns ErrForkNotFound if
+	// the head batch's parentHash doesn't match — caller should call SeekToProperHead
+	// then retry. Returns ErrPeekBlockNumMismatch if blockNum is ahead of the streamer.
 	Peek(ctx context.Context, blockNum uint64, parentHash common.Hash) (*B, error)
 
-	// PopByParentHash clears headBatch, drains stale/wrong-fork entries from
-	// the buffer front, and positions the buffer at the correct fork for the
-	// next HasNext/Peek call. Intended to be called after Peek returns ErrForkNotFound.
-	PopByParentHash(blockNum uint64, parentHash common.Hash)
+	// SeekToProperHead clears headBatch, drains stale/wrong-fork entries from
+	// the front of buffer, and will try to position buffer at correct parent hash
+	// Intended to be called after Peek returns ErrForkNotFound.
+	SeekToProperHead(parentHash common.Hash)
 
 	// GetFallbackHotshotPos returns the fallback hotshot position
 	GetFallbackHotshotPos() uint64
