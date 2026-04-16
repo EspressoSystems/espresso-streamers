@@ -403,6 +403,14 @@ func (s *BatchStreamer[B]) SeekToProperHead(parentHash common.Hash) {
 		)
 		return
 	}
+	s.Log.Warn(
+		"resetting headBatch",
+		"headNum", (*s.headBatch).Number(),
+		"nextBatchPos", s.nextBatchPos,
+		"parentHash", parentHash.Hex(),
+		"headBatchHash", (*s.headBatch).Header().Hash(),
+		"headBatchParentHash", (*s.headBatch).Header().Hash(),
+	)
 	s.headBatch = nil
 	for {
 		head := s.BatchBuffer.Peek()
