@@ -409,19 +409,38 @@ func (s *BatchStreamer[B]) SeekToProperHead(parentHash common.Hash) {
 		if head == nil {
 			break
 		}
-		bufferedParent := (*head).Header().ParentHash
-		if (*head).Number() < s.nextBatchPos || (*head).Header().ParentHash != parentHash {
+
+		num := (*head).Number()
+		if num != s.nextBatchPos {
 			s.Log.Warn(
-				"discarding stale buffered batch",
-				"bufferNum", (*head).Number(),
+				"correct parent hash not yet found",
+				"headNr", num,
 				"nextBatchPos", s.nextBatchPos,
-				"headParentHash", bufferedParent.Hex(),
+				"targetParentHash", parentHash.Hex(),
+			)
+			break
+		}
+
+		bufferedParentHash := (*head).Header().ParentHash
+		if bufferedParentHash != parentHash {
+			s.Log.Warn(
+				"buffer head parent hash does not match expected parent hash. discarding",
+				"headNr", num,
+				"nextBatchPos", s.nextBatchPos,
+				"headParentHash", bufferedParentHash.Hex(),
 				"targetParentHash", parentHash.Hex(),
 			)
 			s.BatchBuffer.Pop()
 			continue
 		}
 
+		s.Log.Info(
+			"buffer head will be set to correct hash next peek call",
+			"headNr", num,
+			"nextBatchPos", s.nextBatchPos,
+			"headParentHash", bufferedParentHash.Hex(),
+			"targetParentHash", parentHash.Hex(),
+		)
 		break
 	}
 }
