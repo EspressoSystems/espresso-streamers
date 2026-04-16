@@ -542,7 +542,21 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 
 	// If this is the batch we're supposed to give out next and we don't
 	// have any other candidates, put it in as the head batch
+	buffered := (s.BatchBuffer.Get(0))
+	if buffered != nil && (*buffered).Number() == s.nextBatchPos {
+		s.Log.Info("Setting buffered batch as head batch",
+			"hash", (*batch).Hash(),
+			"parentHash", header.ParentHash,
+			"epochNum", header.Number,
+			"timestamp", header.Time,
+			"blockNr", (*batch).Number(),
+			"hash", (*batch).Header().Hash())
+		s.headBatch = buffered
+	}
 	if (*batch).Number() == s.nextBatchPos && s.headBatch == nil {
+		if buffered != nil {
+			s.Log.Info("buffered head", "num", (*buffered).Number())
+		}
 		s.Log.Info("Setting batch as the head batch",
 			"hash", (*batch).Hash(),
 			"parentHash", header.ParentHash,
