@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -252,6 +253,9 @@ func (m *MockStreamerSource) CallContract(ctx context.Context, call ethereum.Cal
 var _ EspressoClient = (*MockStreamerSource)(nil)
 
 func (m *MockStreamerSource) FetchLatestBlockHeight(ctx context.Context) (uint64, error) {
+	if m.LatestEspHeight <= math.MaxUint64-2 {
+		return m.LatestEspHeight + 2, nil
+	}
 	return m.LatestEspHeight, nil
 }
 
