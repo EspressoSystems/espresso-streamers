@@ -54,7 +54,6 @@ type LightClientCallerInterface interface {
 type EspressoClient interface {
 	FetchLatestBlockHeight(ctx context.Context) (uint64, error)
 	FetchNamespaceTransactionsInRange(ctx context.Context, fromHeight uint64, toHeight uint64, namespace uint64) ([]espressoCommon.NamespaceTransactionsRangeData, error)
-	FetchBlockSummaries(ctx context.Context, from *uint64, limit uint64) (espressoCommon.BlockSummaryResponse, error)
 }
 
 // L1Client is an interface that documents the methods we utilize for
@@ -420,7 +419,7 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 	}
 
 	// Process the new batches fetched from Espresso
-	s.Log.Debug("Fetching HotShot block range", "start", start, "finish", finish)
+	s.Log.Trace("Fetching HotShot block range", "start", start, "finish", finish)
 
 	// FetchNamespaceTransactionsInRange fetches transactions in [start, finish)
 	startTime := time.Now()
@@ -437,7 +436,9 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 	fetchedTime := time.Now()
 	var headerTimestamps []uint64
 	if s.trackBatchTimestamp {
-		// initialize all timestamps to fetchedTime
+		// initialize all timestamps to the time when
+		// we are able to query the hotshot block from
+		// query service
 		headerTimestamps = make([]uint64, len(hotShotBlocks))
 		for i := range headerTimestamps {
 			headerTimestamps[i] = uint64(fetchedTime.Unix())

@@ -10,7 +10,6 @@ import (
 	"math/big"
 	"math/rand"
 	"testing"
-	"time"
 
 	espressoClient "github.com/EspressoSystems/espresso-network/sdks/go/client"
 	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
@@ -254,21 +253,6 @@ var _ EspressoClient = (*MockStreamerSource)(nil)
 
 func (m *MockStreamerSource) FetchLatestBlockHeight(ctx context.Context) (uint64, error) {
 	return m.LatestEspHeight, nil
-}
-
-func (m *MockStreamerSource) FetchBlockSummaries(ctx context.Context, from *uint64, limit uint64) (espressoCommon.BlockSummaryResponse, error) {
-	if from == nil || limit == 0 {
-		return espressoCommon.BlockSummaryResponse{}, nil
-	}
-	var summaries []espressoCommon.BlockSummary
-	for i := uint64(0); i < limit && *from >= i; i++ {
-		h := *from - i
-		summaries = append(summaries, espressoCommon.BlockSummary{
-			Height: h,
-			Time:   time.Unix(int64(h), 0).UTC().Format(time.RFC3339),
-		})
-	}
-	return espressoCommon.BlockSummaryResponse{BlockSummaries: summaries}, nil
 }
 
 // ErrorNotFound is a custom error type used to indicate that a requested
@@ -1579,34 +1563,4 @@ func TestDuplicateHeadBatchDropped(t *testing.T) {
 
 	require.True(t, streamer.HasNext(ctx))
 	require.Equal(t, uint64(2), streamer.Next(ctx).Number())
-}
-
-func TestBatchTimestampTracking(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	namespace := uint64(42)
-	chainID := big.NewInt(int64(namespace))
-	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
-	chainSigner := chainSignerFactory(chainID, common.Address{})
-
-	state, streamer := setupStreamerTestingWithPerf(namespace, signerAddress, true)
-	rng := rand.New(rand.NewSource(0))
-
-	syncStatus := state.SyncStatus()
-	require.NoError(t, streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin))
-
-	_, espBatch, _, espTxnInBlock := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, 1, chainSigner)
-	hotshotHeight := uint64(10)
-	state.AddEspressoTransactionData(hotshotHeight, namespace, espTxnInBlock)
-	// Advance LatestEspHeight so blocks N+2 exist for finalization timestamp lookup
-	state.LatestEspHeight = hotshotHeight + 2
-
-	require.NoError(t, streamer.Update(ctx))
-	require.True(t, streamer.HasNext(ctx))
-
-	ts, ok := streamer.GetBatchFinalizationTimestamp(espBatch.Hash())
-	require.True(t, ok)
-	require.Equal(t, hotshotHeight+2, ts, "timestamp should equal block N+2 (finalization time)")
 }
