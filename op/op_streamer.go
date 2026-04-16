@@ -598,12 +598,21 @@ func (s *BatchStreamer[B]) HasNext(ctx context.Context) bool {
 	for {
 		if s.headBatch == nil {
 			nextBuffered := s.BatchBuffer.Peek()
-			if nextBuffered != nil && (*nextBuffered).Number() == s.nextBatchPos {
-				s.headBatch = nextBuffered
-				s.BatchBuffer.Pop()
-			} else {
+			if nextBuffered == nil {
 				return false
 			}
+			if (*nextBuffered).Number() < s.nextBatchPos {
+				// Stale batch from before the current position (e.g. old fork entry);
+				// discard it and check the next buffered batch.
+				s.BatchBuffer.Pop()
+				continue
+			}
+			if (*nextBuffered).Number() != s.nextBatchPos {
+				// Buffer has a batch for a future position; nothing ready yet.
+				return false
+			}
+			s.headBatch = nextBuffered
+			s.BatchBuffer.Pop()
 		}
 
 		validity := s.CheckBatch(ctx, *s.headBatch)
