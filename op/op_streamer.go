@@ -604,11 +604,15 @@ func (s *BatchStreamer[B]) HasNext(ctx context.Context) bool {
 			if (*nextBuffered).Number() < s.nextBatchPos {
 				// Stale batch from before the current position (e.g. old fork entry);
 				// discard it and check the next buffered batch.
+				s.Log.Info(
+					"found a stale batch in buffer, could be from an earlier fork. discarding",
+					"batchNr", (*nextBuffered).Number(),
+					"nextBatchPos", s.nextBatchPos,
+				)
 				s.BatchBuffer.Pop()
 				continue
 			}
 			if (*nextBuffered).Number() != s.nextBatchPos {
-				// Buffer has a batch for a future position; nothing ready yet.
 				return false
 			}
 			s.headBatch = nextBuffered
