@@ -139,6 +139,10 @@ func (b *BufferedEspressoStreamer[B]) Reset() {
 	b.readPos = 0
 }
 
+func (b *BufferedEspressoStreamer[B]) GetBatchFinalizationTimestamp(hash common.Hash) (uint64, bool) {
+	return b.streamer.GetBatchFinalizationTimestamp(hash)
+}
+
 // HasNext implements EspressoStreamerIFace
 //
 // It checks to see if there are any batches left to read in its local buffer.
