@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"math/big"
 	"math/rand"
 	"testing"
@@ -45,6 +46,7 @@ func TestNewEspressoStreamer(t *testing.T) {
 		0,
 		1,
 		batchAuthAddr,
+		false,
 	)
 	require.NoError(t, err)
 }
@@ -67,6 +69,7 @@ func TestResetAfterNewDoesNotSkipBatch(t *testing.T) {
 		0,
 		originBatchPos,
 		batchAuthAddr,
+		false,
 	)
 	require.NoError(t, err)
 	require.Equal(t, originBatchPos+1, streamer.nextBatchPos, "BatchPos should be originBatchPos+1 after New")
@@ -250,6 +253,9 @@ func (m *MockStreamerSource) CallContract(ctx context.Context, call ethereum.Cal
 var _ EspressoClient = (*MockStreamerSource)(nil)
 
 func (m *MockStreamerSource) FetchLatestBlockHeight(ctx context.Context) (uint64, error) {
+	if m.LatestEspHeight <= math.MaxUint64-2 {
+		return m.LatestEspHeight + 2, nil
+	}
 	return m.LatestEspHeight, nil
 }
 
@@ -449,6 +455,10 @@ var batchAuthenticatorAddr = common.HexToAddress("0x0000000000000000000000000000
 // for testing purposes. It sets up the initial state of the MockStreamerSource
 // and returns both the MockStreamerSource and the EspressoStreamer.
 func setupStreamerTesting(namespace uint64, batcherAddress common.Address, originBatchPos ...uint64) (*MockStreamerSource, *BatchStreamer[derivation.EspressoBatch]) {
+	return setupStreamerTestingWithPerf(namespace, batcherAddress, false, originBatchPos...)
+}
+
+func setupStreamerTestingWithPerf(namespace uint64, batcherAddress common.Address, trackPerformance bool, originBatchPos ...uint64) (*MockStreamerSource, *BatchStreamer[derivation.EspressoBatch]) {
 	batchPos := uint64(1)
 	if len(originBatchPos) > 0 {
 		batchPos = originBatchPos[0]
@@ -469,6 +479,7 @@ func setupStreamerTesting(namespace uint64, batcherAddress common.Address, origi
 		0,
 		batchPos,
 		batchAuthenticatorAddr,
+		trackPerformance,
 	)
 	if err != nil {
 		panic(fmt.Sprintf("setupStreamerTesting: failed to create streamer: %v", err))
