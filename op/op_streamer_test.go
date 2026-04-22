@@ -1505,8 +1505,7 @@ func TestPeek(t *testing.T) {
 		err = streamer.Update(ctx)
 		require.NoError(t, err)
 
-		peeked := streamer.Peek(ctx)
-		require.Nil(t, peeked)
+		require.Nil(t, streamer.Peek(ctx))
 	})
 }
 
