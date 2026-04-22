@@ -190,6 +190,12 @@ func (b *BufferedEspressoStreamer[B]) GetFallbackHotshotPos() uint64 {
 	return b.streamer.GetFallbackHotshotPos()
 }
 
+// SetProperHead delegates to the underlying streamer and adjust readPos
+func (b *BufferedEspressoStreamer[B]) SetProperHead(parentHash common.Hash) {
+	b.batches = b.batches[:b.readPos]
+	b.streamer.SetProperHead(parentHash)
+}
+
 func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context) *B {
 	if b.readPos < uint64(len(b.batches)) {
 		return b.batches[b.readPos]

@@ -410,6 +410,69 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 	return nil
 }
 
+// SetProperHead drains stale/wrong-fork entries from the buffer, positioning
+// it at the correct fork for the next HasNext/Peek call. If headBatch's block
+// number doesn't match nextBatchPos the mismatch is at the channel manager level
+// rather than a fork issue, so we exit early without touching anything.
+func (s *BatchStreamer[B]) SetProperHead(parentHash common.Hash) {
+	if s.headBatch != nil && (*s.headBatch).Number() != s.nextBatchPos {
+		s.Log.Warn(
+			"headBatch block number mismatch",
+			"headNum", (*s.headBatch).Number(),
+			"nextBatchPos", s.nextBatchPos,
+		)
+		return
+	}
+	s.Log.Warn(
+		"resetting headBatch",
+		"headNum", (*s.headBatch).Number(),
+		"nextBatchPos", s.nextBatchPos,
+		"parentHash", parentHash.Hex(),
+		"headBatchHash", (*s.headBatch).Header().Hash(),
+		"headBatchParentHash", (*s.headBatch).Header().Hash(),
+	)
+	s.headBatch = nil
+	for {
+		head := s.BatchBuffer.Peek()
+		if head == nil {
+			break
+		}
+
+		num := (*head).Number()
+		if num != s.nextBatchPos {
+			s.Log.Warn(
+				"correct parent hash not yet found",
+				"headNr", num,
+				"nextBatchPos", s.nextBatchPos,
+				"targetParentHash", parentHash.Hex(),
+			)
+			break
+		}
+
+		bufferedParentHash := (*head).Header().ParentHash
+		if bufferedParentHash != parentHash {
+			s.Log.Warn(
+				"buffer head parent hash does not match expected parent hash. discarding",
+				"headNr", num,
+				"nextBatchPos", s.nextBatchPos,
+				"headParentHash", bufferedParentHash.Hex(),
+				"targetParentHash", parentHash.Hex(),
+			)
+			s.BatchBuffer.Pop()
+			continue
+		}
+
+		s.Log.Info(
+			"buffer head will be set to correct hash next peek call",
+			"headNr", num,
+			"nextBatchPos", s.nextBatchPos,
+			"headParentHash", bufferedParentHash.Hex(),
+			"targetParentHash", parentHash.Hex(),
+		)
+		break
+	}
+}
+
 // fetchHotShotRange is a helper method that will load all of the blocks from
 // Hotshot from start (inclusive) to finish (exclusive). It will process each block and
 // update the batch buffer with any batches found in the block.
@@ -496,7 +559,7 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 		return nil
 
 	case BatchPast:
-		s.Log.Info("Batch already processed. Skipping", "batch", (*batch).Number())
+		s.Log.Info("Batch already processed. Skipping", "batch", (*batch).Number(), "hash", (*batch).Header().Hash())
 		return nil
 
 	case BatchUndecided:
@@ -514,14 +577,13 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 		return nil
 	}
 
-	// If this is the batch we're supposed to give out next and we don't
-	// have any other candidates, put it in as the head batch
 	if (*batch).Number() == s.nextBatchPos && s.headBatch == nil {
 		s.Log.Info("Setting batch as the head batch",
 			"hash", (*batch).Hash(),
 			"parentHash", header.ParentHash,
 			"epochNum", header.Number,
-			"timestamp", header.Time)
+			"timestamp", header.Time,
+			"hash", (*batch).Header().Hash())
 		s.headBatch = batch
 	} else {
 		// Otherwise, try to buffer it. If the buffer is full, forward the error up to record
@@ -530,7 +592,8 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 			"hash", (*batch).Hash(),
 			"parentHash", header.ParentHash,
 			"epochNum", header.Number,
-			"timestamp", header.Time)
+			"timestamp", header.Time,
+			"hash", (*batch).Header().Hash())
 		// BatchBuffer.Insert returns only ErrDuplicateBatch or ErrAtCapacity; the two
 		// branches below are therefore exhaustive and falling through to return nil is correct.
 		err := s.BatchBuffer.Insert(*batch)
@@ -581,12 +644,25 @@ func (s *BatchStreamer[B]) HasNext(ctx context.Context) bool {
 	for {
 		if s.headBatch == nil {
 			nextBuffered := s.BatchBuffer.Peek()
-			if nextBuffered != nil && (*nextBuffered).Number() == s.nextBatchPos {
-				s.headBatch = nextBuffered
-				s.BatchBuffer.Pop()
-			} else {
+			if nextBuffered == nil {
 				return false
 			}
+			if (*nextBuffered).Number() < s.nextBatchPos {
+				// Stale batch from before the current position (e.g. old fork entry);
+				// discard it and check the next buffered batch.
+				s.Log.Info(
+					"found a stale batch in buffer, could be from an earlier fork. discarding",
+					"batchNr", (*nextBuffered).Number(),
+					"nextBatchPos", s.nextBatchPos,
+				)
+				s.BatchBuffer.Pop()
+				continue
+			}
+			if (*nextBuffered).Number() != s.nextBatchPos {
+				return false
+			}
+			s.headBatch = nextBuffered
+			s.BatchBuffer.Pop()
 		}
 
 		validity := s.CheckBatch(ctx, *s.headBatch)

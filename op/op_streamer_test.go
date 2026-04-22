@@ -1509,6 +1509,64 @@ func TestPeek(t *testing.T) {
 	})
 }
 
+// TestSetProperHead verifies that when Peek returns ErrForkNotFound because the
+// head batch has the wrong parentHash, SetProperHead drains the wrong fork and
+// positions the buffer so the next Peek returns the correct fork.
+func TestSetProperHead(t *testing.T) {
+	namespace := uint64(42)
+	chainID := big.NewInt(int64(namespace))
+	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	_ = chainSignerFactory(chainID, common.Address{})
+
+	ctx := context.Background()
+	state, streamer := setupStreamerTesting(namespace, signerAddress)
+
+	syncStatus := state.SyncStatus()
+	err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+	require.NoError(t, err)
+
+	correctParentHash := createHashFromHeight(1)
+	wrongParentHash := createHashFromHeight(99)
+
+	makeBatch := func(parentHash common.Hash) derivation.EspressoBatch {
+		return derivation.EspressoBatch{
+			BatchHeader: &geth_types.Header{
+				ParentHash: parentHash,
+				Number:     big.NewInt(1),
+			},
+			Batch: derive.SingularBatch{
+				ParentHash: parentHash,
+				EpochNum:   rollup.Epoch(state.FinalizedL1.Number),
+				EpochHash:  state.FinalizedL1.Hash,
+				Timestamp:  1,
+			},
+			L1InfoDeposit: geth_types.NewTx(&geth_types.DepositTx{}),
+			SignerAddress: signerAddress,
+		}
+	}
+
+	wrongFork := makeBatch(wrongParentHash)
+	rightFork := makeBatch(correctParentHash)
+
+	// Wrong fork arrives first in the buffer (simulating Espresso commit order)
+	require.NoError(t, streamer.BatchBuffer.Insert(wrongFork))
+	require.NoError(t, streamer.BatchBuffer.Insert(rightFork))
+
+	// Peek promotes wrongFork as headBatch. Caller checks parentHash and finds mismatch.
+	peeked := streamer.Peek(ctx)
+	require.NotNil(t, peeked)
+	require.NotEqual(t, correctParentHash, (*peeked).Header().ParentHash)
+
+	// SetProperHead drains the wrong fork and positions the buffer at rightFork.
+	streamer.SetProperHead(correctParentHash)
+
+	// Now Peek should find rightFork and return it.
+	peeked = streamer.Peek(ctx)
+	require.NotNil(t, peeked)
+	require.Equal(t, correctParentHash, (*peeked).Header().ParentHash)
+}
+
 // TestUpdateReturnsErrorOnMaxUint64BlockHeight verifies that Update returns an error
 // when FetchLatestBlockHeight returns math.MaxUint64 (overflow guard).
 func TestUpdateReturnsErrorOnMaxUint64BlockHeight(t *testing.T) {
