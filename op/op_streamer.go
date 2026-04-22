@@ -410,11 +410,11 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 	return nil
 }
 
-// SeekToProperHead drains stale/wrong-fork entries from the buffer, positioning
+// SetProperHead drains stale/wrong-fork entries from the buffer, positioning
 // it at the correct fork for the next HasNext/Peek call. If headBatch's block
 // number doesn't match nextBatchPos the mismatch is at the channel manager level
 // rather than a fork issue, so we exit early without touching anything.
-func (s *BatchStreamer[B]) SeekToProperHead(parentHash common.Hash) {
+func (s *BatchStreamer[B]) SetProperHead(parentHash common.Hash) {
 	if s.headBatch != nil && (*s.headBatch).Number() != s.nextBatchPos {
 		s.Log.Warn(
 			"headBatch block number mismatch",
@@ -583,7 +583,6 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 			"parentHash", header.ParentHash,
 			"epochNum", header.Number,
 			"timestamp", header.Time,
-			"blockNr", (*batch).Number(),
 			"hash", (*batch).Header().Hash())
 		s.headBatch = batch
 	} else {
@@ -594,7 +593,6 @@ func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, trans
 			"parentHash", header.ParentHash,
 			"epochNum", header.Number,
 			"timestamp", header.Time,
-			"blockNr", (*batch).Number(),
 			"hash", (*batch).Header().Hash())
 		// BatchBuffer.Insert returns only ErrDuplicateBatch or ErrAtCapacity; the two
 		// branches below are therefore exhaustive and falling through to return nil is correct.
@@ -627,7 +625,6 @@ func (s *BatchStreamer[B]) Next(ctx context.Context) *B {
 	if s.HasNext(ctx) {
 		// Current batch is going to be processed, advance the next expected batch position
 		s.nextBatchPos += 1
-		s.Log.Info("batch position advanced", "newNextBatchPos", s.nextBatchPos, "batchNr", (*s.headBatch).Number(), "batchHash", (*s.headBatch).Hash(), "hash", (*s.headBatch).Header().Hash())
 		head := s.headBatch
 		s.headBatch = nil
 		// If we have been skipping batches, now is the time

@@ -1510,10 +1510,10 @@ func TestPeek(t *testing.T) {
 	})
 }
 
-// TestSeekToProperHead verifies that when Peek returns ErrForkNotFound because the
-// head batch has the wrong parentHash, SeekToProperHead drains the wrong fork and
+// TestSetProperHead verifies that when Peek returns ErrForkNotFound because the
+// head batch has the wrong parentHash, SetProperHead drains the wrong fork and
 // positions the buffer so the next Peek returns the correct fork.
-func TestSeekToProperHead(t *testing.T) {
+func TestSetProperHead(t *testing.T) {
 	namespace := uint64(42)
 	chainID := big.NewInt(int64(namespace))
 	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
@@ -1559,8 +1559,8 @@ func TestSeekToProperHead(t *testing.T) {
 	require.NotNil(t, peeked)
 	require.NotEqual(t, correctParentHash, (*peeked).Header().ParentHash)
 
-	// SeekToProperHead drains the wrong fork and positions the buffer at rightFork.
-	streamer.SeekToProperHead(correctParentHash)
+	// SetProperHead drains the wrong fork and positions the buffer at rightFork.
+	streamer.SetProperHead(correctParentHash)
 
 	// Now Peek should find rightFork and return it.
 	peeked = streamer.Peek(ctx)

@@ -142,8 +142,8 @@ func (m *MockStreamer[B]) GetFallbackHotshotPos() uint64 {
 	return m.fallbackHotshotPos
 }
 
-// SeekToProperHead implements espresso.EspressoStreamer
-func (m *MockStreamer[B]) SeekToProperHead(_ common.Hash) {}
+// SetProperHead implements espresso.EspressoStreamer
+func (m *MockStreamer[B]) SetProperHead(_ common.Hash) {}
 
 func (m *MockStreamer[B]) GetBatchFinalizationTimestamp(hash common.Hash) (uint64, bool) {
 	return 0, false
