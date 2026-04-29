@@ -91,12 +91,14 @@ func NewEspressoStreamer(
 ) *EspressoStreamer {
 
 	return &EspressoStreamer{
-		espressoClient:        espressoClient,
-		nextHotshotBlockNum:   nextHotshotBlockNum,
-		namespace:             namespace,
-		validBatcherAddresses: append([]common.Address(nil), validBatcherAddresses...),
-		retryTime:             retryTime,
-		currentMessagePos:     1,
+		espressoClient:            espressoClient,
+		nextHotshotBlockNum:       nextHotshotBlockNum,
+		namespace:                 namespace,
+		validBatcherAddresses:     append([]common.Address(nil), validBatcherAddresses...),
+		retryTime:                 retryTime,
+		currentMessagePos:         1,
+		messageWithMetadataAndPos: make(map[uint64]*MessageWithMetadataAndPos),
+		highestPos:                1,
 	}
 }
 
