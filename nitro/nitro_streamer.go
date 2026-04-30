@@ -76,6 +76,7 @@ type EspressoStreamer struct {
 
 	validBatcherAddresses []common.Address
 
+	log    log.Logger
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
@@ -88,6 +89,7 @@ func NewEspressoStreamer(
 	espressoClient espressoClient.EspressoClient,
 	validBatcherAddresses []common.Address,
 	retryTime time.Duration,
+	logger log.Logger,
 ) *EspressoStreamer {
 
 	return &EspressoStreamer{
@@ -99,6 +101,7 @@ func NewEspressoStreamer(
 		currentMessagePos:         1,
 		messageWithMetadataAndPos: make(map[uint64]*MessageWithMetadataAndPos),
 		highestPos:                1,
+		log:                       logger,
 	}
 }
 
@@ -184,6 +187,7 @@ func (s *EspressoStreamer) QueueMessagesFromHotshot(
 		startHotshotBlockNum,
 		parseHotShotPayloadFn,
 		s.namespace,
+		s.log,
 	)
 	if err != nil {
 		return err
@@ -206,7 +210,7 @@ func (s *EspressoStreamer) verifyBatchPosterSignature(signature []byte, userData
 	addr := crypto.PubkeyToAddress(*publicKey)
 	valid := slices.Contains(s.validBatcherAddresses, addr)
 	if !valid {
-		log.Error("address not valid", "addr", addr)
+		s.log.Error("address not valid", "addr", addr)
 		return fmt.Errorf("address not valid: %v", addr)
 	}
 	return nil
@@ -237,14 +241,14 @@ func (s *EspressoStreamer) GetCurrentEarliestHotShotBlockNumber(pos uint64) uint
 func (s *EspressoStreamer) parseEspressoTransaction(tx espressoTypes.Bytes) error {
 	signature, userDataHash, indices, messages, err := ParseHotShotPayload(tx)
 	if err != nil {
-		log.Warn("failed to parse hotshot payload", "err", err)
+		s.log.Warn("failed to parse hotshot payload", "err", err)
 		return err
 	}
 	if len(messages) == 0 {
 		return ErrPayloadHadNoMessages
 	}
 	if len(userDataHash) != 32 {
-		log.Warn("user data hash is not 32 bytes")
+		s.log.Warn("user data hash is not 32 bytes")
 		return ErrUserDataHashNot32Bytes
 	}
 
@@ -252,7 +256,7 @@ func (s *EspressoStreamer) parseEspressoTransaction(tx espressoTypes.Bytes) erro
 
 	err = s.verifyBatchPosterSignature(signature, userDataHashArr)
 	if err != nil {
-		log.Warn("failed to verify batch poster signature", "err", err)
+		s.log.Warn("failed to verify batch poster signature", "err", err)
 		return err
 	}
 
@@ -262,13 +266,13 @@ func (s *EspressoStreamer) parseEspressoTransaction(tx espressoTypes.Bytes) erro
 		var messageWithMetadata MessageWithMetadata
 		err = rlp.DecodeBytes(message, &messageWithMetadata)
 		if err != nil {
-			log.Warn("failed to decode message", "err", err)
+			s.log.Warn("failed to decode message", "err", err)
 			// Instead of returnning an error, we should just skip this message
 			continue
 		}
 
 		if indices[i] < s.currentMessagePos {
-			log.Warn("message index is less than current message pos, skipping", "msgPos", indices[i], "currentMessagePos", s.currentMessagePos)
+			s.log.Warn("message index is less than current message pos, skipping", "msgPos", indices[i], "currentMessagePos", s.currentMessagePos)
 			continue
 		}
 
@@ -293,7 +297,7 @@ func (s *EspressoStreamer) parseEspressoTransaction(tx espressoTypes.Bytes) erro
 			}
 		}
 
-		log.Info("Added message to queue", "message", indices[i])
+		s.log.Info("Added message to queue", "message", indices[i])
 	}
 	return nil
 }
@@ -309,6 +313,7 @@ func fetchNextHotshotBlock(
 	nextHotshotBlockNum uint64,
 	parseHotShotPayloadFn func(tx espressoTypes.Bytes) error,
 	namespace uint64,
+	log log.Logger,
 ) (uint64, error) {
 
 	// get the current hotshot block
@@ -382,11 +387,11 @@ func (s *EspressoStreamer) Start(ctxIn context.Context) error {
 			err := s.QueueMessagesFromHotshot(ctx, s.parseEspressoTransaction)
 
 			// Use integer division to detect 1000-block boundary crossings, so
-			// ranges that skip over a multiple of 1000 still trigger the Info log.
+			// ranges that skip over a multiple of 1000 still trigger the Info s.log.
 			if s.nextHotshotBlockNum/1000 > prevHotshotBlockNum/1000 {
-				log.Info("Now processing hotshot block", "block number", s.nextHotshotBlockNum)
+				s.log.Info("Now processing hotshot block", "block number", s.nextHotshotBlockNum)
 			} else {
-				log.Debug("Now processing hotshot block", "block number", s.nextHotshotBlockNum)
+				s.log.Debug("Now processing hotshot block", "block number", s.nextHotshotBlockNum)
 			}
 			if err != nil {
 				now := time.Now()
@@ -399,15 +404,15 @@ func (s *EspressoStreamer) Start(ctxIn context.Context) error {
 					if time.Since(ephemeralFirstSeen) < ephemeralDuration {
 						// Within grace period: downgrade to Warn, rate-limited
 						if ephemeralLastLog.IsZero() || time.Since(ephemeralLastLog) >= ephemeralLogInterval {
-							log.Warn("error while queueing messages from hotshot", "err", err)
+							s.log.Warn("error while queueing messages from hotshot", "err", err)
 							ephemeralLastLog = now
 						}
 					} else {
 						// Past grace period: escalate to Error
-						log.Error("error while queueing messages from hotshot", "err", err)
+						s.log.Error("error while queueing messages from hotshot", "err", err)
 					}
 				} else {
-					log.Error("error while queueing messages from hotshot", "err", err)
+					s.log.Error("error while queueing messages from hotshot", "err", err)
 				}
 
 				select {

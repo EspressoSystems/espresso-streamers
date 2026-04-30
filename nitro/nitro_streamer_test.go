@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -22,7 +23,7 @@ func TestEspressoStreamer(t *testing.T) {
 	t.Run("Peek should not change the current position", func(t *testing.T) {
 		mockEspressoClient := new(mockEspressoClient)
 
-		streamer := NewEspressoStreamer(1, 3, mockEspressoClient, nil, 1*time.Second)
+		streamer := NewEspressoStreamer(1, 3, mockEspressoClient, nil, 1*time.Second, log.Root())
 
 		streamer.Reset(1, 3)
 
@@ -52,7 +53,7 @@ func TestEspressoStreamer(t *testing.T) {
 	t.Run("Next should consume a message if it is in buffer", func(t *testing.T) {
 		mockEspressoClient := new(mockEspressoClient)
 
-		streamer := NewEspressoStreamer(1, 3, mockEspressoClient, nil, 1*time.Second)
+		streamer := NewEspressoStreamer(1, 3, mockEspressoClient, nil, 1*time.Second, log.Root())
 
 		streamer.Reset(1, 3)
 
@@ -114,7 +115,7 @@ func TestEspressoStreamer(t *testing.T) {
 		mockEspressoClient.On("FetchLatestBlockHeight", ctx).Return(uint64(7), nil).Once()
 		mockEspressoClient.On("FetchNamespaceTransactionsInRange", ctx, uint64(6), uint64(7), namespace).Return([]types.NamespaceTransactionsRangeData{}, errors.New("test error")).Once()
 
-		streamer := NewEspressoStreamer(namespace, 3, mockEspressoClient, nil, 1*time.Second)
+		streamer := NewEspressoStreamer(namespace, 3, mockEspressoClient, nil, 1*time.Second, log.Root())
 
 		testParseFn := func(tx types.Bytes) error {
 			return nil
@@ -167,7 +168,7 @@ func TestEspressoStreamer(t *testing.T) {
 			},
 		}, nil).Once()
 
-		streamer := NewEspressoStreamer(namespace, 3, mockEspressoClient, nil, 1*time.Second)
+		streamer := NewEspressoStreamer(namespace, 3, mockEspressoClient, nil, 1*time.Second, log.Root())
 
 		testParseFn := func(pos uint64, hotshotheight uint64) func(tx types.Bytes) error {
 
@@ -258,7 +259,7 @@ func TestEspressoStreamer(t *testing.T) {
 			return nil
 		}
 
-		_, err := fetchNextHotshotBlock(ctx, mockEspressoClient, blockNum, parseFn, namespace)
+		_, err := fetchNextHotshotBlock(ctx, mockEspressoClient, blockNum, parseFn, namespace, log.Root())
 		require.NoError(t, err)
 
 		require.Equal(t, 2, len(messages), "Expected to process two messages")
@@ -284,7 +285,7 @@ func ExpectErr(t *testing.T, err error, expectedError error) {
 // This test ensures that parseEspressoTransaction will have
 func TestEspressoEmptyTransaction(t *testing.T) {
 	mockEspressoClient := new(mockEspressoClient)
-	streamer := NewEspressoStreamer(1, 1, mockEspressoClient, nil, time.Millisecond)
+	streamer := NewEspressoStreamer(1, 1, mockEspressoClient, nil, time.Millisecond, log.Root())
 	// This determines the contents of the message. For this test the contents of the message needs to be empty (not 0's) to properly test the behavior
 	msgFetcher := func(MessageIndex) ([]byte, error) {
 		return []byte{}, nil
