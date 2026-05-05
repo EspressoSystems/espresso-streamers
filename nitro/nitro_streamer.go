@@ -89,6 +89,7 @@ func NewEspressoStreamer(
 	espressoClient espressoClient.EspressoClient,
 	validBatcherAddresses []common.Address,
 	retryTime time.Duration,
+	startMessagePos uint64,
 	logger log.Logger,
 ) *EspressoStreamer {
 
@@ -98,7 +99,7 @@ func NewEspressoStreamer(
 		namespace:                 namespace,
 		validBatcherAddresses:     append([]common.Address(nil), validBatcherAddresses...),
 		retryTime:                 retryTime,
-		currentMessagePos:         1,
+		currentMessagePos:         startMessagePos,
 		messageWithMetadataAndPos: make(map[uint64]*MessageWithMetadataAndPos),
 		highestPos:                1,
 		log:                       logger,

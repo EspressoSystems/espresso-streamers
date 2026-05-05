@@ -23,7 +23,7 @@ func TestEspressoStreamer(t *testing.T) {
 	t.Run("Peek should not change the current position", func(t *testing.T) {
 		mockEspressoClient := new(mockEspressoClient)
 
-		streamer := NewEspressoStreamer(1, 3, mockEspressoClient, nil, 1*time.Second, log.Root())
+		streamer := NewEspressoStreamer(1, 3, mockEspressoClient, nil, 1*time.Second, 0, log.Root())
 
 		streamer.Reset(1, 3)
 
@@ -53,7 +53,7 @@ func TestEspressoStreamer(t *testing.T) {
 	t.Run("Next should consume a message if it is in buffer", func(t *testing.T) {
 		mockEspressoClient := new(mockEspressoClient)
 
-		streamer := NewEspressoStreamer(1, 3, mockEspressoClient, nil, 1*time.Second, log.Root())
+		streamer := NewEspressoStreamer(1, 3, mockEspressoClient, nil, 1*time.Second, 0, log.Root())
 
 		streamer.Reset(1, 3)
 
@@ -115,7 +115,7 @@ func TestEspressoStreamer(t *testing.T) {
 		mockEspressoClient.On("FetchLatestBlockHeight", ctx).Return(uint64(7), nil).Once()
 		mockEspressoClient.On("FetchNamespaceTransactionsInRange", ctx, uint64(6), uint64(7), namespace).Return([]types.NamespaceTransactionsRangeData{}, errors.New("test error")).Once()
 
-		streamer := NewEspressoStreamer(namespace, 3, mockEspressoClient, nil, 1*time.Second, log.Root())
+		streamer := NewEspressoStreamer(namespace, 3, mockEspressoClient, nil, 1*time.Second, 0, log.Root())
 
 		testParseFn := func(tx types.Bytes) error {
 			return nil
@@ -168,7 +168,7 @@ func TestEspressoStreamer(t *testing.T) {
 			},
 		}, nil).Once()
 
-		streamer := NewEspressoStreamer(namespace, 3, mockEspressoClient, nil, 1*time.Second, log.Root())
+		streamer := NewEspressoStreamer(namespace, 3, mockEspressoClient, nil, 1*time.Second, 0, log.Root())
 
 		testParseFn := func(pos uint64, hotshotheight uint64) func(tx types.Bytes) error {
 
@@ -285,7 +285,7 @@ func ExpectErr(t *testing.T, err error, expectedError error) {
 // This test ensures that parseEspressoTransaction will have
 func TestEspressoEmptyTransaction(t *testing.T) {
 	mockEspressoClient := new(mockEspressoClient)
-	streamer := NewEspressoStreamer(1, 1, mockEspressoClient, nil, time.Millisecond, log.Root())
+	streamer := NewEspressoStreamer(1, 1, mockEspressoClient, nil, time.Millisecond, 0, log.Root())
 	// This determines the contents of the message. For this test the contents of the message needs to be empty (not 0's) to properly test the behavior
 	msgFetcher := func(MessageIndex) ([]byte, error) {
 		return []byte{}, nil
