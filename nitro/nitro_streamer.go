@@ -36,6 +36,8 @@ type EspressoStreamerInterface interface {
 	Peek() *MessageWithMetadataAndPos
 	// Advance moves the current message position to the next message.
 	Advance()
+	// Advance moves the current message position to the specified message.
+	AdvanceTo(toPos uint64)
 	// Reset sets the current message position and the next hotshot block number.
 	Reset(currentMessagePos uint64, currentHostshotBlock uint64)
 	// RecordTimeDurationBetweenHotshotAndCurrentBlock records the time duration between
@@ -171,6 +173,20 @@ func (s *EspressoStreamer) Advance() {
 	defer s.messageLock.Unlock()
 	delete(s.messageWithMetadataAndPos, s.currentMessagePos)
 	s.currentMessagePos += 1
+}
+
+func (s *EspressoStreamer) AdvanceTo(toPos uint64) {
+	s.messageLock.Lock()
+	defer s.messageLock.Unlock()
+	if toPos <= s.currentMessagePos {
+		return
+	}
+
+	for pos := s.currentMessagePos; pos < toPos; pos++ {
+		delete(s.messageWithMetadataAndPos, pos)
+	}
+
+	s.currentMessagePos = toPos
 }
 
 // This function keep fetching hotshot blocks and parsing them until the condition is met.
