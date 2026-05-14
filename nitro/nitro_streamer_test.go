@@ -9,15 +9,56 @@ import (
 
 	espressoClient "github.com/EspressoSystems/espresso-network/sdks/go/client"
 	"github.com/EspressoSystems/espresso-network/sdks/go/types"
-	espressoTypes "github.com/EspressoSystems/espresso-network/sdks/go/types"
 	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 )
+
+func TestEphemeralTracker(t *testing.T) {
+	t.Run("first observe always logs as warn", func(t *testing.T) {
+		e := ephemeralTracker{duration: time.Minute, interval: time.Minute}
+		shouldLog, asError := e.observe()
+		assert.True(t, shouldLog)
+		assert.False(t, asError)
+	})
+
+	t.Run("second observe within interval is suppressed", func(t *testing.T) {
+		e := ephemeralTracker{duration: time.Minute, interval: time.Minute}
+		e.observe()
+		shouldLog, _ := e.observe()
+		assert.False(t, shouldLog)
+	})
+
+	t.Run("escalates to error after grace period", func(t *testing.T) {
+		e := ephemeralTracker{duration: -1, interval: time.Minute}
+		shouldLog, asError := e.observe()
+		assert.True(t, shouldLog)
+		assert.True(t, asError)
+	})
+
+	t.Run("reset clears state so next observe logs as warn", func(t *testing.T) {
+		e := ephemeralTracker{duration: time.Minute, interval: time.Minute}
+		e.observe()
+		e.reset()
+		shouldLog, asError := e.observe()
+		assert.True(t, shouldLog)
+		assert.False(t, asError)
+	})
+
+	t.Run("reset preserves duration and interval", func(t *testing.T) {
+		e := ephemeralTracker{duration: 5 * time.Minute, interval: 30 * time.Second}
+		e.observe()
+		e.reset()
+		assert.Equal(t, 5*time.Minute, e.duration)
+		assert.Equal(t, 30*time.Second, e.interval)
+	})
+}
 
 func TestEspressoStreamer(t *testing.T) {
 	t.Run("Peek should not change the current position", func(t *testing.T) {
@@ -99,8 +140,7 @@ func TestEspressoStreamer(t *testing.T) {
 		assert.Equal(t, initialPos+2, streamer.currentMessagePos)
 	})
 	t.Run("Streamer should not skip any hotshot blocks", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		mockEspressoClient := new(mockEspressoClient)
 
@@ -117,7 +157,7 @@ func TestEspressoStreamer(t *testing.T) {
 
 		streamer := NewEspressoStreamer(namespace, 3, mockEspressoClient, nil, 1*time.Second, 0, log.Root())
 
-		testParseFn := func(tx types.Bytes) error {
+		testParseFn := func(tx types.Bytes, l1Height uint64) error {
 			return nil
 		}
 
@@ -139,8 +179,7 @@ func TestEspressoStreamer(t *testing.T) {
 
 	})
 	t.Run("Streamer should query hotshot after being reset", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 		mockEspressoClient := new(mockEspressoClient)
 
 		namespace := uint64(1)
@@ -150,7 +189,7 @@ func TestEspressoStreamer(t *testing.T) {
 				Transactions: []types.Transaction{
 					{
 						Namespace: 1,
-						Payload:   espressoTypes.Bytes{0x05, 0x06, 0x07, 0x08},
+						Payload:   types.Bytes{0x05, 0x06, 0x07, 0x08},
 					},
 				},
 			},
@@ -162,7 +201,7 @@ func TestEspressoStreamer(t *testing.T) {
 				Transactions: []types.Transaction{
 					{
 						Namespace: 1,
-						Payload:   espressoTypes.Bytes{0x05, 0x06, 0x07, 0x08},
+						Payload:   types.Bytes{0x05, 0x06, 0x07, 0x08},
 					},
 				},
 			},
@@ -170,9 +209,9 @@ func TestEspressoStreamer(t *testing.T) {
 
 		streamer := NewEspressoStreamer(namespace, 3, mockEspressoClient, nil, 1*time.Second, 0, log.Root())
 
-		testParseFn := func(pos uint64, hotshotheight uint64) func(tx types.Bytes) error {
+		testParseFn := func(pos uint64, hotshotheight uint64) func(tx types.Bytes, _ uint64) error {
 
-			return func(tx types.Bytes) error {
+			return func(tx types.Bytes, _ uint64) error {
 				msg := &MessageWithMetadataAndPos{
 					MessageWithMeta: MessageWithMetadata{
 						Message: &L1IncomingMessage{},
@@ -204,7 +243,7 @@ func TestEspressoStreamer(t *testing.T) {
 				Transactions: []types.Transaction{
 					{
 						Namespace: 1,
-						Payload:   espressoTypes.Bytes{0x05, 0x06, 0x07, 0x08},
+						Payload:   types.Bytes{0x05, 0x06, 0x07, 0x08},
 					},
 				},
 			},
@@ -224,7 +263,7 @@ func TestEspressoStreamer(t *testing.T) {
 
 		mockEspressoClient.On("FetchLatestBlockHeight", ctx).Return(blockNum+1, nil).Once()
 
-		tx1, tx2, tx3 := espressoTypes.Bytes{0x01}, espressoTypes.Bytes{0x02}, espressoTypes.Bytes{0x03}
+		tx1, tx2, tx3 := types.Bytes{0x01}, types.Bytes{0x02}, types.Bytes{0x03}
 		mockEspressoClient.On("FetchNamespaceTransactionsInRange", ctx, blockNum, blockNum+1, namespace).Return([]types.NamespaceTransactionsRangeData{
 			{
 				Transactions: []types.Transaction{
@@ -246,7 +285,7 @@ func TestEspressoStreamer(t *testing.T) {
 
 		parseAttemptCount := 0
 		messages := []*MessageWithMetadataAndPos{}
-		parseFn := func(tx types.Bytes) error {
+		parseFn := func(tx types.Bytes, _ uint64) error {
 			if assert.ObjectsAreEqual(tx, tx2) {
 				parseAttemptCount++
 				return rpc.ErrNoResult
@@ -271,6 +310,59 @@ func TestEspressoStreamer(t *testing.T) {
 		require.Equal(t, 1, parseAttemptCount, "Expected the failing transaction to be attempted only once")
 
 		mockEspressoClient.AssertExpectations(t)
+	})
+
+	t.Run("Duplicate message position should be discarded", func(t *testing.T) {
+		mockEspressoClient := new(mockEspressoClient)
+
+		key, err := crypto.GenerateKey()
+		require.NoError(t, err)
+		addr := crypto.PubkeyToAddress(key.PublicKey)
+
+		streamer := NewEspressoStreamer(1, 3, mockEspressoClient, []AddressValidRangeConfig{
+			{Address: addr.Hex(), From: 0, To: 100},
+		}, 1*time.Second, 0, log.Root())
+		streamer.Reset(1, 3)
+
+		signer := func(data []byte) ([]byte, error) {
+			return crypto.Sign(crypto.Keccak256(data), key)
+		}
+
+		buildPayload := func(msg MessageWithMetadata) []byte {
+			msgBytes, err := rlp.EncodeToBytes(msg)
+			require.NoError(t, err)
+			raw, cnt := BuildRawHotShotPayload(
+				[]MessageIndex{5},
+				func(MessageIndex) ([]byte, error) { return msgBytes, nil },
+				100000,
+			)
+			require.Equal(t, 1, cnt)
+			signed, err := SignHotShotPayload(raw, signer)
+			require.NoError(t, err)
+			return signed
+		}
+
+		firstPayload := buildPayload(MessageWithMetadata{
+			Message:             &EmptyTestIncomingMessage,
+			DelayedMessagesRead: 1,
+		})
+		secondPayload := buildPayload(MessageWithMetadata{
+			Message:             &EmptyTestIncomingMessage,
+			DelayedMessagesRead: 2,
+		})
+
+		err = streamer.parseEspressoTransaction(firstPayload, 1)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(streamer.messageWithMetadataAndPos))
+		firstMsg := streamer.messageWithMetadataAndPos[5]
+		require.NotNil(t, firstMsg)
+		assert.Equal(t, uint64(1), firstMsg.MessageWithMeta.DelayedMessagesRead)
+
+		err = streamer.parseEspressoTransaction(secondPayload, 1)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, len(streamer.messageWithMetadataAndPos))
+		assert.Equal(t, firstMsg, streamer.messageWithMetadataAndPos[5], "second message at same position should be discarded")
 	})
 }
 
@@ -298,7 +390,7 @@ func TestEspressoEmptyTransaction(t *testing.T) {
 		return []byte{1}, nil
 	}
 	signedPayload, _ := SignHotShotPayload(payload, signerFunc)
-	err := streamer.parseEspressoTransaction(signedPayload)
+	err := streamer.parseEspressoTransaction(signedPayload, 0)
 	ExpectErr(t, err, ErrPayloadHadNoMessages)
 }
 
@@ -307,12 +399,12 @@ type mockEspressoClient struct {
 }
 
 // StreamTransactions implements client.EspressoClient.
-func (m *mockEspressoClient) StreamTransactions(ctx context.Context, height uint64) (espressoClient.Stream[espressoTypes.TransactionQueryData], error) {
+func (m *mockEspressoClient) StreamTransactions(ctx context.Context, height uint64) (espressoClient.Stream[types.TransactionQueryData], error) {
 	panic("unimplemented")
 }
 
 // StreamTransactionsInNamespace implements client.EspressoClient.
-func (m *mockEspressoClient) StreamTransactionsInNamespace(ctx context.Context, height uint64, namespace uint64) (espressoClient.Stream[espressoTypes.TransactionQueryData], error) {
+func (m *mockEspressoClient) StreamTransactionsInNamespace(ctx context.Context, height uint64, namespace uint64) (espressoClient.Stream[types.TransactionQueryData], error) {
 	panic("unimplemented")
 }
 
@@ -329,10 +421,10 @@ func (m *mockEspressoClient) FetchExplorerTransactionByHash(ctx context.Context,
 }
 
 // FetchNamespaceTransactionsInRange implements client.EspressoClient.
-func (m *mockEspressoClient) FetchNamespaceTransactionsInRange(ctx context.Context, fromHeight uint64, toHeight uint64, namespace uint64) ([]espressoTypes.NamespaceTransactionsRangeData, error) {
+func (m *mockEspressoClient) FetchNamespaceTransactionsInRange(ctx context.Context, fromHeight uint64, toHeight uint64, namespace uint64) ([]types.NamespaceTransactionsRangeData, error) {
 	args := m.Called(ctx, fromHeight, toHeight, namespace)
 	//nolint:errcheck
-	return args.Get(0).([]espressoTypes.NamespaceTransactionsRangeData), args.Error(1)
+	return args.Get(0).([]types.NamespaceTransactionsRangeData), args.Error(1)
 }
 
 func (m *mockEspressoClient) FetchTransactionsInBlock(ctx context.Context, blockHeight uint64, namespace uint64) (espressoClient.TransactionsInBlock, error) {
@@ -341,9 +433,9 @@ func (m *mockEspressoClient) FetchTransactionsInBlock(ctx context.Context, block
 	return args.Get(0).(espressoClient.TransactionsInBlock), args.Error(1)
 }
 
-func (m *mockEspressoClient) FetchHeaderByHeight(ctx context.Context, blockHeight uint64) (espressoTypes.HeaderImpl, error) {
-	header := espressoTypes.Header0_3{Height: blockHeight, L1Finalized: &espressoTypes.L1BlockInfo{Number: 1}}
-	return espressoTypes.HeaderImpl{Header: &header}, nil
+func (m *mockEspressoClient) FetchHeaderByHeight(ctx context.Context, blockHeight uint64) (types.HeaderImpl, error) {
+	header := types.Header0_3{Height: blockHeight, L1Finalized: &types.L1BlockInfo{Number: 1}}
+	return types.HeaderImpl{Header: &header}, nil
 }
 
 func (m *mockEspressoClient) FetchHeadersByRange(ctx context.Context, from uint64, until uint64) ([]types.HeaderImpl, error) {

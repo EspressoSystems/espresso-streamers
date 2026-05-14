@@ -27,6 +27,10 @@ type MessageWithMetadata struct {
 	DelayedMessagesRead uint64             `json:"delayedMessagesRead"`
 }
 
+var EmptyTestIncomingMessage = L1IncomingMessage{
+	Header: &L1IncomingMessageHeader{},
+}
+
 type BatchDataStats struct {
 	Length   uint64 `json:"length"`
 	NonZeros uint64 `json:"nonzeros"`

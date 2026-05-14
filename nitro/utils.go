@@ -3,6 +3,7 @@ package nitro
 import (
 	"encoding/binary"
 	"errors"
+	"time"
 
 	"github.com/ccoveille/go-safecast"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -12,6 +13,34 @@ import (
 const MAX_ATTESTATION_QUOTE_SIZE int = 4 * 1024
 const LEN_SIZE int = 8
 const INDEX_SIZE int = 8
+
+type ephemeralTracker struct {
+	firstSeen time.Time
+	lastLog   time.Time
+	duration  time.Duration
+	interval  time.Duration
+}
+
+// observe records one error occurrence and returns (shouldLog, asError).
+func (e *ephemeralTracker) observe() (bool, bool) {
+	now := time.Now()
+	if e.firstSeen.IsZero() {
+		e.firstSeen = now
+	}
+	if time.Since(e.firstSeen) >= e.duration {
+		return true, true
+	}
+	if e.lastLog.IsZero() || time.Since(e.lastLog) >= e.interval {
+		e.lastLog = now
+		return true, false
+	}
+	return false, false
+}
+
+func (e *ephemeralTracker) reset() {
+	e.firstSeen = time.Time{}
+	e.lastLog = time.Time{}
+}
 
 func BuildRawHotShotPayload(
 	msgPositions []MessageIndex,
@@ -72,7 +101,7 @@ func ParseHotShotPayload(payload []byte) (signature []byte, userDataHash []byte,
 	}
 
 	// Extract the signature size
-	signatureSize, err := safecast.ToInt(binary.BigEndian.Uint64(payload[:LEN_SIZE]))
+	signatureSize, err := safecast.Convert[int](binary.BigEndian.Uint64(payload[:LEN_SIZE]))
 	if err != nil {
 		return nil, nil, nil, nil, errors.New("could not convert signature size to int")
 	}
@@ -104,7 +133,7 @@ func ParseHotShotPayload(payload []byte) (signature []byte, userDataHash []byte,
 		currentPos += INDEX_SIZE
 
 		// Extract the message size
-		messageSize, err := safecast.ToInt(binary.BigEndian.Uint64(payload[currentPos : currentPos+LEN_SIZE]))
+		messageSize, err := safecast.Convert[int](binary.BigEndian.Uint64(payload[currentPos : currentPos+LEN_SIZE]))
 		if err != nil {
 			return nil, nil, nil, nil, errors.New("could not convert message size to int")
 		}
