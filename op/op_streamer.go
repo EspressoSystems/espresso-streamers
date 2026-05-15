@@ -429,8 +429,8 @@ func (s *BatchStreamer[B]) SetProperHead(parentHash common.Hash) {
 			"headNum", (*s.headBatch).Number(),
 			"nextBatchPos", s.nextBatchPos,
 			"parentHash", parentHash.Hex(),
-			"headBatchHash", (*s.headBatch).Header().Hash(),
-			"headBatchParentHash", (*s.headBatch).Header().ParentHash,
+			"headBatchHash", (*s.headBatch).Header().Hash().Hex(),
+			"headBatchParentHash", (*s.headBatch).Header().ParentHash.Hex(),
 		)
 	} else {
 		s.Log.Warn(
