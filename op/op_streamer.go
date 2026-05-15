@@ -423,14 +423,22 @@ func (s *BatchStreamer[B]) SetProperHead(parentHash common.Hash) {
 		)
 		return
 	}
-	s.Log.Warn(
-		"resetting headBatch",
-		"headNum", (*s.headBatch).Number(),
-		"nextBatchPos", s.nextBatchPos,
-		"parentHash", parentHash.Hex(),
-		"headBatchHash", (*s.headBatch).Header().Hash(),
-		"headBatchParentHash", (*s.headBatch).Header().Hash(),
-	)
+	if s.headBatch != nil {
+		s.Log.Warn(
+			"resetting headBatch",
+			"headNum", (*s.headBatch).Number(),
+			"nextBatchPos", s.nextBatchPos,
+			"parentHash", parentHash.Hex(),
+			"headBatchHash", (*s.headBatch).Header().Hash().Hex(),
+			"headBatchParentHash", (*s.headBatch).Header().ParentHash.Hex(),
+		)
+	} else {
+		s.Log.Warn(
+			"SetProperHead called with nil headBatch",
+			"nextBatchPos", s.nextBatchPos,
+			"parentHash", parentHash.Hex(),
+		)
+	}
 	s.headBatch = nil
 	for {
 		head := s.BatchBuffer.Peek()
