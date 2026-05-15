@@ -390,7 +390,7 @@ func fetchNextHotshotBlock(
 		for _, tx := range namespaceTransactionData.Transactions {
 			txPayloadBytes := tx.Payload
 			err := parseHotShotPayloadFn(txPayloadBytes, l1Height)
-			if err != nil && !strings.Contains(err.Error(), ErrRetryParsingHotShotPayload.Error()) {
+			if errors.Is(err, ErrRetryParsingHotShotPayload) {
 				log.Warn("failed to verify espresso transaction", "err", err)
 				continue
 			}
