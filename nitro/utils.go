@@ -22,7 +22,7 @@ type ephemeralTracker struct {
 }
 
 // observe records one error occurrence and returns (shouldLog, asError).
-func (e *ephemeralTracker) observe() (bool, bool) {
+func (e *ephemeralTracker) observe() (shouldLog bool, asError bool) {
 	now := time.Now()
 	if e.firstSeen.IsZero() {
 		e.firstSeen = now
