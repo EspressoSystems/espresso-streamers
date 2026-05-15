@@ -14,30 +14,47 @@ const MAX_ATTESTATION_QUOTE_SIZE int = 4 * 1024
 const LEN_SIZE int = 8
 const INDEX_SIZE int = 8
 
-type ephemeralTracker struct {
+type ShouldLogEnum int
+
+const (
+	ShouldNotLog ShouldLogEnum = iota
+	ShouldLog
+)
+
+type ShouldLogAsErrorEnum int
+
+const (
+	ShouldNotLogAsError ShouldLogAsErrorEnum = iota
+	ShouldLogAsError
+)
+
+// logDebouncer suppresses repeated log output for recurring errors. Within the
+// grace duration, at most one log is emitted per interval (as a warning).
+// Once the grace period expires without recovery, every call logs as an error,
+// indicating the condition is no longer transient.
+type logDebouncer struct {
 	firstSeen time.Time
 	lastLog   time.Time
 	duration  time.Duration
 	interval  time.Duration
 }
 
-// observe records one error occurrence and returns (shouldLog, asError).
-func (e *ephemeralTracker) observe() (shouldLog bool, asError bool) {
+func (e *logDebouncer) debounce() (ShouldLogEnum, ShouldLogAsErrorEnum) {
 	now := time.Now()
 	if e.firstSeen.IsZero() {
 		e.firstSeen = now
 	}
 	if time.Since(e.firstSeen) >= e.duration {
-		return true, true
+		return ShouldLog, ShouldLogAsError
 	}
 	if e.lastLog.IsZero() || time.Since(e.lastLog) >= e.interval {
 		e.lastLog = now
-		return true, false
+		return ShouldLog, ShouldNotLogAsError
 	}
-	return false, false
+	return ShouldNotLog, ShouldNotLogAsError
 }
 
-func (e *ephemeralTracker) reset() {
+func (e *logDebouncer) reset() {
 	e.firstSeen = time.Time{}
 	e.lastLog = time.Time{}
 }

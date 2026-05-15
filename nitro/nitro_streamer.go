@@ -4,13 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
-	espressoClient "github.com/EspressoSystems/espresso-network/sdks/go/client"
 	espressoTypes "github.com/EspressoSystems/espresso-network/sdks/go/types"
-	"github.com/ccoveille/go-safecast"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -21,15 +18,13 @@ import (
 const HOTSHOT_RANGE_LIMIT = 100
 
 var (
-	ErrFailedToFetchTransactions  = errors.New("failed to fetch transactions")
-	ErrPayloadHadNoMessages       = errors.New("ParseHotShotPayload found no messages, the transaction may be empty")
-	ErrUserDataHashNot32Bytes     = errors.New("user data hash is not 32 bytes")
-	ErrRetryParsingHotShotPayload = errors.New("failed to parse hotshot payload, but will retry")
+	ErrFailedToFetchTransactions = errors.New("failed to fetch transactions")
+	ErrPayloadHadNoMessages      = errors.New("ParseHotShotPayload found no messages, the transaction may be empty")
+	ErrUserDataHashNot32Bytes    = errors.New("user data hash is not 32 bytes")
 )
 
 type EspressoStreamerInterface interface {
 	Start(ctx context.Context) error
-	Next() *MessageWithMetadataAndPos
 	// Peek returns the next message in the streamer's buffer. If the message is not
 	// in the buffer, it will return nil.
 	Peek() *MessageWithMetadataAndPos
@@ -39,16 +34,20 @@ type EspressoStreamerInterface interface {
 	AdvanceTo(toPos uint64)
 	// Reset sets the current message position and the next hotshot block number.
 	Reset(currentMessagePos uint64, currentHostshotBlock uint64)
-	// RecordTimeDurationBetweenHotshotAndCurrentBlock records the time duration between
-	// the next hotshot block and the current block.
-	RecordTimeDurationBetweenHotshotAndCurrentBlock(nextHotshotBlock uint64, blockProductionTime time.Time)
+
 	GetCurrentEarliestHotShotBlockNumber(pos uint64) uint64
 
 	StopAndWait()
 }
 
+type EspressoClientInterface interface {
+	FetchLatestBlockHeight(ctx context.Context) (uint64, error)
+	FetchHeaderByHeight(ctx context.Context, blockHeight uint64) (espressoTypes.HeaderImpl, error)
+	FetchNamespaceTransactionsInRange(ctx context.Context, from, to uint64, namespace uint64) ([]espressoTypes.NamespaceTransactionsRangeData, error)
+}
+
 type EspressoStreamer struct {
-	espressoClient            espressoClient.EspressoClient
+	espressoClient            EspressoClientInterface
 	nextHotshotBlockNum       uint64
 	currentMessagePos         uint64
 	namespace                 uint64
@@ -57,8 +56,6 @@ type EspressoStreamer struct {
 
 	messageLock sync.RWMutex
 	retryTime   time.Duration
-
-	PerfRecorder *PerfRecorder
 
 	monitor *BatcherAddrMonitor
 
@@ -72,7 +69,7 @@ var _ EspressoStreamerInterface = (*EspressoStreamer)(nil)
 func NewEspressoStreamer(
 	namespace uint64,
 	nextHotshotBlockNum uint64,
-	espressoClient espressoClient.EspressoClient,
+	espressoClient EspressoClientInterface,
 	addressValidRanges []AddressValidRangeConfig,
 	retryTime time.Duration,
 	startMessagePos uint64,
@@ -138,16 +135,6 @@ func (s *EspressoStreamer) Reset(currentMessagePos uint64, currentHotshotBlock u
 	s.nextHotshotBlockNum = hotshotBlockNum
 	s.highestPos = currentMessagePos
 	s.messageWithMetadataAndPos = make(map[uint64]*MessageWithMetadataAndPos)
-}
-
-func (s *EspressoStreamer) Next() *MessageWithMetadataAndPos {
-	result := s.Peek()
-	if result == nil {
-		return nil
-	}
-
-	s.Advance()
-	return result
 }
 
 func (s *EspressoStreamer) Peek() *MessageWithMetadataAndPos {
@@ -238,10 +225,10 @@ func (s *EspressoStreamer) GetCurrentEarliestHotShotBlockNumber(pos uint64) uint
 		return msg.HotshotHeight
 	}
 
-	// pos not found — scan forward for the minimum height among known positions.
+	// pos not found — find the minimum height among all buffered positions >= pos.
 	minHeight := s.nextHotshotBlockNum
-	for nextPos := pos; nextPos <= s.highestPos; nextPos++ {
-		if msg, ok := s.messageWithMetadataAndPos[nextPos]; ok && msg.HotshotHeight < minHeight {
+	for nextPos, msg := range s.messageWithMetadataAndPos {
+		if nextPos >= pos && msg.HotshotHeight < minHeight {
 			minHeight = msg.HotshotHeight
 		}
 	}
@@ -315,33 +302,9 @@ func (s *EspressoStreamer) parseEspressoTransaction(tx espressoTypes.Bytes, l1He
 	return nil
 }
 
-func (s *EspressoStreamer) getEspressoBlockTimestamp(ctx context.Context, blockHeight uint64) (time.Time, error) {
-	header, err := s.espressoClient.FetchHeaderByHeight(ctx, blockHeight)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("unable to fetch header for hotshot block: %w", err)
-	}
-	seconds, err := safecast.Convert[int64](header.Header.GetTimestamp())
-	if err != nil {
-		return time.Time{}, fmt.Errorf("unable to cast timestamp to int64: %w", err)
-	}
-	return time.Unix(seconds, 0), nil
-}
-
-func (s *EspressoStreamer) RecordTimeDurationBetweenHotshotAndCurrentBlock(nextHotshotBlock uint64, blockProductionTime time.Time) {
-	if s.PerfRecorder != nil {
-		timestamp, err := s.getEspressoBlockTimestamp(context.Background(), nextHotshotBlock)
-		if err != nil {
-			log.Warn("unable to fetch header for hotshot block", "err", err)
-		} else {
-			s.PerfRecorder.SetStartTime(timestamp)
-			s.PerfRecorder.SetEndTime(blockProductionTime, fmt.Sprintf("Time duration between hotshot block %d and current block", nextHotshotBlock))
-		}
-	}
-}
-
 func fetchNextHotshotBlock(
 	ctx context.Context,
-	espressoClient espressoClient.EspressoClient,
+	espressoClient EspressoClientInterface,
 	nextHotshotBlockNum uint64,
 	parseHotShotPayloadFn func(tx espressoTypes.Bytes, l1Height uint64) error,
 	namespace uint64,
@@ -354,28 +317,32 @@ func fetchNextHotshotBlock(
 	}
 
 	fromBlock := nextHotshotBlockNum
-	toBlock := latestBlockHeight
+	untilBlock := latestBlockHeight
 
-	if latestBlockHeight-nextHotshotBlockNum > HOTSHOT_RANGE_LIMIT {
-		toBlock = nextHotshotBlockNum + HOTSHOT_RANGE_LIMIT
+	if fromBlock > untilBlock {
+		return fromBlock, nil
 	}
 
-	if fromBlock == toBlock {
-		return toBlock, nil
+	if untilBlock-fromBlock > HOTSHOT_RANGE_LIMIT {
+		untilBlock = nextHotshotBlockNum + HOTSHOT_RANGE_LIMIT
+	}
+
+	if fromBlock == untilBlock {
+		return fromBlock, nil
 	}
 
 	// FetchNamespaceTransactionsInRange is exclusive of the last element.
-	namespaceTransactionRangeData, err := espressoClient.FetchNamespaceTransactionsInRange(ctx, fromBlock, toBlock, namespace)
+	namespaceTransactionRangeData, err := espressoClient.FetchNamespaceTransactionsInRange(ctx, fromBlock, untilBlock, namespace)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %w", ErrFailedToFetchTransactions, err)
 	}
 	if len(namespaceTransactionRangeData) == 0 {
 		// Empty blocks are valid; no transactions is not an error.
-		return toBlock, nil
+		return untilBlock, nil
 	}
 
 	// we are subtracting 1 here because FetchNamespaceTransactionsInRange is exclusive of the last element
-	header, err := espressoClient.FetchHeaderByHeight(ctx, toBlock-1)
+	header, err := espressoClient.FetchHeaderByHeight(ctx, untilBlock-1)
 	l1Height := uint64(0)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %w", ErrFailedToFetchTransactions, err)
@@ -389,18 +356,13 @@ func fetchNextHotshotBlock(
 	for _, namespaceTransactionData := range namespaceTransactionRangeData {
 		for _, tx := range namespaceTransactionData.Transactions {
 			txPayloadBytes := tx.Payload
-			err := parseHotShotPayloadFn(txPayloadBytes, l1Height)
-			if errors.Is(err, ErrRetryParsingHotShotPayload) {
+			if err := parseHotShotPayloadFn(txPayloadBytes, l1Height); err != nil {
 				log.Warn("failed to verify espresso transaction", "err", err)
-				continue
-			}
-			if err != nil {
-				return 0, err
 			}
 		}
 	}
 
-	return toBlock, nil
+	return untilBlock, nil
 }
 
 func (s *EspressoStreamer) Start(ctxIn context.Context) error {
@@ -408,7 +370,7 @@ func (s *EspressoStreamer) Start(ctxIn context.Context) error {
 	s.cancel = cancel
 
 	s.wg.Go(func() {
-		tracker := ephemeralTracker{
+		debouncer := logDebouncer{
 			duration: 3 * time.Minute,
 			interval: time.Minute,
 		}
@@ -432,24 +394,18 @@ func (s *EspressoStreamer) Start(ctxIn context.Context) error {
 			}
 
 			if err != nil {
-				if errors.Is(err, ErrFailedToFetchTransactions) {
-					if shouldLog, asError := tracker.observe(); shouldLog {
-						if asError {
-							s.log.Error("error while queueing messages from hotshot", "err", err)
-						} else {
-							s.log.Warn("error while queueing messages from hotshot", "err", err)
-						}
-					}
-				} else {
+				if !errors.Is(err, ErrFailedToFetchTransactions) {
 					s.log.Error("error while queueing messages from hotshot", "err", err)
+				} else if shouldLog, logError := debouncer.debounce(); shouldLog == ShouldLog {
+					if logError == ShouldLogAsError {
+						s.log.Error("error while queueing messages from hotshot", "err", err)
+					} else {
+						s.log.Warn("error while queueing messages from hotshot", "err", err)
+					}
 				}
-				select {
-				case <-time.After(s.retryTime):
-				case <-ctx.Done():
-					return
-				}
+				time.Sleep(s.retryTime)
 			} else {
-				tracker.reset()
+				debouncer.reset()
 			}
 		}
 	})

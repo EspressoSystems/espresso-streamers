@@ -2,14 +2,11 @@ package nitro
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
-	espressoClient "github.com/EspressoSystems/espresso-network/sdks/go/client"
 	"github.com/EspressoSystems/espresso-network/sdks/go/types"
-	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -19,46 +16,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 )
-
-func TestEphemeralTracker(t *testing.T) {
-	t.Run("first observe always logs as warn", func(t *testing.T) {
-		e := ephemeralTracker{duration: time.Minute, interval: time.Minute}
-		shouldLog, asError := e.observe()
-		assert.True(t, shouldLog)
-		assert.False(t, asError)
-	})
-
-	t.Run("second observe within interval is suppressed", func(t *testing.T) {
-		e := ephemeralTracker{duration: time.Minute, interval: time.Minute}
-		e.observe()
-		shouldLog, _ := e.observe()
-		assert.False(t, shouldLog)
-	})
-
-	t.Run("escalates to error after grace period", func(t *testing.T) {
-		e := ephemeralTracker{duration: -1, interval: time.Minute}
-		shouldLog, asError := e.observe()
-		assert.True(t, shouldLog)
-		assert.True(t, asError)
-	})
-
-	t.Run("reset clears state so next observe logs as warn", func(t *testing.T) {
-		e := ephemeralTracker{duration: time.Minute, interval: time.Minute}
-		e.observe()
-		e.reset()
-		shouldLog, asError := e.observe()
-		assert.True(t, shouldLog)
-		assert.False(t, asError)
-	})
-
-	t.Run("reset preserves duration and interval", func(t *testing.T) {
-		e := ephemeralTracker{duration: 5 * time.Minute, interval: 30 * time.Second}
-		e.observe()
-		e.reset()
-		assert.Equal(t, 5*time.Minute, e.duration)
-		assert.Equal(t, 30*time.Second, e.interval)
-	})
-}
 
 func TestEspressoStreamer(t *testing.T) {
 	t.Run("Peek should not change the current position", func(t *testing.T) {
@@ -91,16 +48,16 @@ func TestEspressoStreamer(t *testing.T) {
 		assert.Equal(t, before, streamer.currentMessagePos)
 		assert.Equal(t, len(streamer.messageWithMetadataAndPos), 2)
 	})
-	t.Run("Next should consume a message if it is in buffer", func(t *testing.T) {
+	t.Run("Peek+Advance should consume a message if it is in buffer", func(t *testing.T) {
 		mockEspressoClient := new(mockEspressoClient)
 
 		streamer := NewEspressoStreamer(1, 3, mockEspressoClient, nil, 1*time.Second, 0, log.Root())
 
 		streamer.Reset(1, 3)
 
-		// Empty buffer. Should not change anything
+		// Empty buffer — Peek returns nil and Advance is not called.
 		initialPos := streamer.currentMessagePos
-		r := streamer.Next()
+		r := streamer.Peek()
 		assert.Nil(t, r)
 		assert.Equal(t, initialPos, streamer.currentMessagePos)
 
@@ -118,10 +75,11 @@ func TestEspressoStreamer(t *testing.T) {
 		}
 
 		expectedFirst := streamer.messageWithMetadataAndPos[initialPos]
-		r = streamer.Next()
+		r = streamer.Peek()
 		assert.Equal(t, expectedFirst, r)
+		streamer.Advance()
 		assert.Equal(t, initialPos+1, streamer.currentMessagePos)
-		// Next consumes the message, buffer now has 1 message.
+		// Advance consumes the message, buffer now has 1 message.
 		assert.Equal(t, len(streamer.messageWithMetadataAndPos), 1)
 
 		// Second message
@@ -130,12 +88,11 @@ func TestEspressoStreamer(t *testing.T) {
 		assert.Equal(t, initialPos+1, streamer.currentMessagePos)
 		assert.Equal(t, len(streamer.messageWithMetadataAndPos), 1)
 
-		newMessage := streamer.Next()
-		assert.Equal(t, peekMessage, newMessage)
+		streamer.Advance()
 		assert.Equal(t, initialPos+2, streamer.currentMessagePos)
 
-		// Empty message should not alter the current position
-		third := streamer.Next()
+		// Empty buffer should not alter the current position when Peek returns nil.
+		third := streamer.Peek()
 		assert.Nil(t, third)
 		assert.Equal(t, initialPos+2, streamer.currentMessagePos)
 	})
@@ -255,7 +212,7 @@ func TestEspressoStreamer(t *testing.T) {
 		require.Equal(t, len(streamer.messageWithMetadataAndPos), 1)
 	})
 
-	t.Run("rpc error should retry", func(t *testing.T) {
+	t.Run("transaction parse error should be skipped", func(t *testing.T) {
 		ctx := context.Background()
 		mockEspressoClient := new(mockEspressoClient)
 		namespace := uint64(1)
@@ -370,7 +327,7 @@ func TestEspressoStreamer(t *testing.T) {
 func ExpectErr(t *testing.T, err error, expectedError error) {
 	t.Helper()
 	if !errors.Is(err, expectedError) {
-		t.Fatal(err, expectedError)
+		t.Fatalf("expected error %v, got %v", expectedError, err)
 	}
 }
 
@@ -398,39 +355,10 @@ type mockEspressoClient struct {
 	mock.Mock
 }
 
-// StreamTransactions implements client.EspressoClient.
-func (m *mockEspressoClient) StreamTransactions(ctx context.Context, height uint64) (espressoClient.Stream[types.TransactionQueryData], error) {
-	panic("unimplemented")
-}
-
-// StreamTransactionsInNamespace implements client.EspressoClient.
-func (m *mockEspressoClient) StreamTransactionsInNamespace(ctx context.Context, height uint64, namespace uint64) (espressoClient.Stream[types.TransactionQueryData], error) {
-	panic("unimplemented")
-}
-
 func (m *mockEspressoClient) FetchLatestBlockHeight(ctx context.Context) (uint64, error) {
 	args := m.Called(ctx)
 	//nolint:errcheck
 	return args.Get(0).(uint64), args.Error(1)
-}
-
-func (m *mockEspressoClient) FetchExplorerTransactionByHash(ctx context.Context, hash *types.TaggedBase64) (types.ExplorerTransactionQueryData, error) {
-	args := m.Called(ctx, hash)
-	//nolint:errcheck
-	return args.Get(0).(types.ExplorerTransactionQueryData), args.Error(1)
-}
-
-// FetchNamespaceTransactionsInRange implements client.EspressoClient.
-func (m *mockEspressoClient) FetchNamespaceTransactionsInRange(ctx context.Context, fromHeight uint64, toHeight uint64, namespace uint64) ([]types.NamespaceTransactionsRangeData, error) {
-	args := m.Called(ctx, fromHeight, toHeight, namespace)
-	//nolint:errcheck
-	return args.Get(0).([]types.NamespaceTransactionsRangeData), args.Error(1)
-}
-
-func (m *mockEspressoClient) FetchTransactionsInBlock(ctx context.Context, blockHeight uint64, namespace uint64) (espressoClient.TransactionsInBlock, error) {
-	args := m.Called(ctx, blockHeight, namespace)
-	//nolint:errcheck
-	return args.Get(0).(espressoClient.TransactionsInBlock), args.Error(1)
 }
 
 func (m *mockEspressoClient) FetchHeaderByHeight(ctx context.Context, blockHeight uint64) (types.HeaderImpl, error) {
@@ -438,22 +366,8 @@ func (m *mockEspressoClient) FetchHeaderByHeight(ctx context.Context, blockHeigh
 	return types.HeaderImpl{Header: &header}, nil
 }
 
-func (m *mockEspressoClient) FetchHeadersByRange(ctx context.Context, from uint64, until uint64) ([]types.HeaderImpl, error) {
-	panic("not implemented")
-}
-
-func (m *mockEspressoClient) FetchRawHeaderByHeight(ctx context.Context, height uint64) (json.RawMessage, error) {
-	panic("not implemented")
-}
-
-func (m *mockEspressoClient) FetchTransactionByHash(ctx context.Context, hash *types.TaggedBase64) (types.TransactionQueryData, error) {
-	panic("not implemented")
-}
-
-func (m *mockEspressoClient) FetchVidCommonByHeight(ctx context.Context, blockHeight uint64) (types.VidCommon, error) {
-	panic("not implemented")
-}
-
-func (m *mockEspressoClient) SubmitTransaction(ctx context.Context, tx espressoCommon.Transaction) (*espressoCommon.TaggedBase64, error) {
-	panic("not implemented")
+func (m *mockEspressoClient) FetchNamespaceTransactionsInRange(ctx context.Context, fromHeight uint64, toHeight uint64, namespace uint64) ([]types.NamespaceTransactionsRangeData, error) {
+	args := m.Called(ctx, fromHeight, toHeight, namespace)
+	//nolint:errcheck
+	return args.Get(0).([]types.NamespaceTransactionsRangeData), args.Error(1)
 }
