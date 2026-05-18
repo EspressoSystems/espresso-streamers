@@ -369,7 +369,9 @@ func (s *EspressoStreamer) Start(ctxIn context.Context) error {
 	ctx, cancel := context.WithCancel(ctxIn)
 	s.cancel = cancel
 
-	s.wg.Go(func() {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
 		debouncer := logDebouncer{
 			duration: 3 * time.Minute,
 			interval: time.Minute,
@@ -408,7 +410,7 @@ func (s *EspressoStreamer) Start(ctxIn context.Context) error {
 				debouncer.reset()
 			}
 		}
-	})
+	}()
 
 	return nil
 }
