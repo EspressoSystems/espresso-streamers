@@ -6,6 +6,7 @@ toolchain go1.24.10
 
 require (
 	github.com/EspressoSystems/espresso-network/sdks/go v0.3.4
+	github.com/ccoveille/go-safecast v1.8.2
 	github.com/ethereum-optimism/optimism v1.16.7
 	github.com/ethereum/go-ethereum v1.17.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
