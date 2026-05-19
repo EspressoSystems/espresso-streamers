@@ -415,15 +415,20 @@ func (s *BatchStreamer[B]) Peek(ctx context.Context) *B {
 // number doesn't match nextBatchPos the mismatch is at the channel manager level
 // rather than a fork issue, so we exit early without touching anything.
 func (s *BatchStreamer[B]) SetProperHead(parentHash common.Hash) {
-	if s.headBatch != nil && (*s.headBatch).Number() != s.nextBatchPos {
+	if s.headBatch == nil {
+		s.Log.Warn(
+			"SetProperHead called with nil headBatch",
+			"nextBatchPos", s.nextBatchPos,
+			"parentHash", parentHash.Hex(),
+		)
+	} else if (*s.headBatch).Number() != s.nextBatchPos {
 		s.Log.Warn(
 			"headBatch block number mismatch",
 			"headNum", (*s.headBatch).Number(),
 			"nextBatchPos", s.nextBatchPos,
 		)
 		return
-	}
-	if s.headBatch != nil {
+	} else {
 		s.Log.Warn(
 			"resetting headBatch",
 			"headNum", (*s.headBatch).Number(),
@@ -431,12 +436,6 @@ func (s *BatchStreamer[B]) SetProperHead(parentHash common.Hash) {
 			"parentHash", parentHash.Hex(),
 			"headBatchHash", (*s.headBatch).Header().Hash().Hex(),
 			"headBatchParentHash", (*s.headBatch).Header().ParentHash.Hex(),
-		)
-	} else {
-		s.Log.Warn(
-			"SetProperHead called with nil headBatch",
-			"nextBatchPos", s.nextBatchPos,
-			"parentHash", parentHash.Hex(),
 		)
 	}
 	s.headBatch = nil
