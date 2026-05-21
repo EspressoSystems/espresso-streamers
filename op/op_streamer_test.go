@@ -1567,6 +1567,22 @@ func TestSetProperHead(t *testing.T) {
 	require.Equal(t, correctParentHash, (*peeked).Header().ParentHash)
 }
 
+// TestSetProperHeadNilHeadBatch verifies that SetProperHead does not panic when
+// headBatch is nil.
+func TestSetProperHeadNilHeadBatch(t *testing.T) {
+	ctx := context.Background()
+
+	state, streamer := setupStreamerTesting(42, common.Address{})
+	syncStatus := state.SyncStatus()
+	err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+	require.NoError(t, err)
+
+	require.NotPanics(t, func() {
+		// headBatch is nil.
+		streamer.SetProperHead(common.Hash{})
+	})
+}
+
 // TestUpdateReturnsErrorOnMaxUint64BlockHeight verifies that Update returns an error
 // when FetchLatestBlockHeight returns math.MaxUint64 (overflow guard).
 func TestUpdateReturnsErrorOnMaxUint64BlockHeight(t *testing.T) {
