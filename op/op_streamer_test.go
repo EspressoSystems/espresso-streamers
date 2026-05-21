@@ -1567,6 +1567,22 @@ func TestSetProperHead(t *testing.T) {
 	require.Equal(t, correctParentHash, (*peeked).Header().ParentHash)
 }
 
+// TestSetProperHeadNilHeadBatch verifies that SetProperHead does not panic when
+// headBatch is nil.
+func TestSetProperHeadNilHeadBatch(t *testing.T) {
+	ctx := context.Background()
+
+	state, streamer := setupStreamerTesting(42, common.Address{})
+	syncStatus := state.SyncStatus()
+	err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+	require.NoError(t, err)
+
+	require.NotPanics(t, func() {
+		// headBatch is nil.
+		streamer.SetProperHead(common.Hash{})
+	})
+}
+
 // TestCheckBatchSignerPreFilter verifies the espressoBatcher pre-filter in CheckBatch. Once
 // espressoBatcher is set (after the first Refresh), a batch signed by a different address must be
 // dropped immediately.
