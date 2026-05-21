@@ -1567,6 +1567,58 @@ func TestSetProperHead(t *testing.T) {
 	require.Equal(t, correctParentHash, (*peeked).Header().ParentHash)
 }
 
+// TestCheckBatchSignerPreFilter verifies the espressoBatcher pre-filter in CheckBatch. Once
+// espressoBatcher is set (after the first Refresh), a batch signed by a different address must be
+// dropped immediately.
+func TestCheckBatchSignerPreFilter(t *testing.T) {
+	ctx := context.Background()
+
+	makeBatch := func(epochNum uint64, signer common.Address) derivation.EspressoBatch {
+		return derivation.EspressoBatch{
+			BatchHeader: &geth_types.Header{
+				Number: big.NewInt(2),
+			},
+			Batch: derive.SingularBatch{
+				EpochNum:  rollup.Epoch(epochNum),
+				EpochHash: createHashFromHeight(epochNum),
+				Timestamp: 1,
+			},
+			L1InfoDeposit: geth_types.NewTx(&geth_types.DepositTx{}),
+			SignerAddress: signer,
+		}
+	}
+
+	knownBatcher := common.HexToAddress("0x0000000000000000000000000000000000000001")
+	unknownSigner := common.HexToAddress("0x000000000000000000000000000000000000dead")
+	futureEpoch := uint64(9999999)
+
+	t.Run("espressoBatcher zero: unknown signer with far-future origin is BatchUndecided not BatchDrop", func(t *testing.T) {
+		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		streamer.FinalizedL1 = createL1BlockRef(100)
+
+		batch := makeBatch(futureEpoch, unknownSigner)
+		require.Equal(t, BatchValidity(BatchUndecided), streamer.CheckBatch(ctx, batch))
+	})
+
+	t.Run("espressoBatcher set: unknown signer is BatchDrop regardless of origin", func(t *testing.T) {
+		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		streamer.FinalizedL1 = createL1BlockRef(100)
+		streamer.espressoBatcher = knownBatcher
+
+		batch := makeBatch(futureEpoch, unknownSigner)
+		require.Equal(t, BatchValidity(BatchDrop), streamer.CheckBatch(ctx, batch))
+	})
+
+	t.Run("espressoBatcher set: known signer passes the filter", func(t *testing.T) {
+		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		streamer.FinalizedL1 = createL1BlockRef(100)
+		streamer.espressoBatcher = knownBatcher
+
+		batch := makeBatch(futureEpoch, knownBatcher)
+		require.Equal(t, BatchValidity(BatchUndecided), streamer.CheckBatch(ctx, batch))
+	})
+}
+
 // TestUpdateReturnsErrorOnMaxUint64BlockHeight verifies that Update returns an error
 // when FetchLatestBlockHeight returns math.MaxUint64 (overflow guard).
 func TestUpdateReturnsErrorOnMaxUint64BlockHeight(t *testing.T) {

@@ -126,6 +126,9 @@ type BatchStreamer[B Batch] struct {
 
 	// Cache for finalized L1 block hashes, keyed by block number.
 	finalizedL1StateCache *simplelru.LRU[uint64, l1State]
+	// Authorized batcher address fetched from the BatchAuthenticator contract on each Refresh.
+	// Zero until the first Refresh.
+	espressoBatcher common.Address
 
 	unmarshalBatch func([]byte) (*B, error)
 
@@ -219,6 +222,15 @@ func (s *BatchStreamer[B]) RefreshSafeL1Origin(safeL1Origin eth.BlockID) {
 func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockRef, safeBatchNumber uint64, safeL1Origin eth.BlockID) error {
 	s.FinalizedL1 = finalizedL1
 
+	// Fetch the Espresso batcher address from the BatchAuthenticator contract.
+	espressoBatcher, err := s.BatchAuthenticatorCaller.EspressoBatcher(
+		&bind.CallOpts{Context: ctx, BlockNumber: new(big.Int).SetUint64(finalizedL1.Number)})
+	if err != nil {
+		s.Log.Warn("Failed to fetch espresso batcher address", "error", err)
+	} else if espressoBatcher != (common.Address{}) {
+		s.espressoBatcher = espressoBatcher
+	}
+
 	s.RefreshSafeL1Origin(safeL1Origin)
 
 	// NOTE: be sure to update s.finalizedL1 before checking this condition and returning
@@ -263,6 +275,14 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 		return BatchUndecided
 	}
 	origin := (batch).L1Origin()
+
+	// Drop batches not signed by the known Espresso batcher before they enter the buffer. This
+	// prevents a far-future origin from pinning headBatch as BatchUndecided indefinitely.
+	if s.espressoBatcher != (common.Address{}) && batch.Signer() != s.espressoBatcher {
+		s.Log.Info(DroppingBatchLogPrefix+" with unrecognized signer",
+			"signer", batch.Signer(), "espressoBatcher", s.espressoBatcher)
+		return BatchDrop
+	}
 
 	if origin.Number > s.FinalizedL1.Number {
 		// Signal to resync to wait for the L1 finality.
