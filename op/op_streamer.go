@@ -276,15 +276,14 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 	}
 	origin := (batch).L1Origin()
 
-	// Drop batches not signed by the known Espresso batcher before they enter the buffer. This
-	// prevents a far-future origin from pinning headBatch as BatchUndecided indefinitely.
-	if s.espressoBatcher != (common.Address{}) && batch.Signer() != s.espressoBatcher {
-		s.Log.Info(DroppingBatchLogPrefix+" with unrecognized signer",
-			"signer", batch.Signer(), "espressoBatcher", s.espressoBatcher)
-		return BatchDrop
-	}
-
 	if origin.Number > s.FinalizedL1.Number {
+		// Drop batches not signed by the known Espresso batcher before they enter the buffer. This
+		// prevents a far-future origin from pinning headBatch as BatchUndecided indefinitely.
+		if s.espressoBatcher != (common.Address{}) && batch.Signer() != s.espressoBatcher {
+			s.Log.Info(DroppingBatchLogPrefix+" with unrecognized signer",
+				"signer", batch.Signer(), "espressoBatcher", s.espressoBatcher)
+			return BatchDrop
+		}
 		// Signal to resync to wait for the L1 finality.
 		s.Log.Warn("L1 origin not finalized, pending resync", "finalized L1 block number", s.FinalizedL1.Number, "origin number", origin.Number)
 		return BatchUndecided
