@@ -1650,6 +1650,18 @@ func TestCheckBatchSignerPreFilter(t *testing.T) {
 		batch := makeBatch(historicalEpoch, knownBatcher)
 		require.Equal(t, BatchValidity(BatchAccept), streamer.CheckBatch(ctx, batch))
 	})
+
+	t.Run("after Refresh: espressoBatcher is populated from contract and pre-filter works", func(t *testing.T) {
+		state, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		syncStatus := state.SyncStatus()
+
+		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		require.NoError(t, err)
+		require.Equal(t, knownBatcher, streamer.espressoBatcher)
+
+		batch := makeBatch(futureEpoch, unknownSigner)
+		require.Equal(t, BatchValidity(BatchDrop), streamer.CheckBatch(ctx, batch))
+	})
 }
 
 // TestUpdateReturnsErrorOnMaxUint64BlockHeight verifies that Update returns an error
