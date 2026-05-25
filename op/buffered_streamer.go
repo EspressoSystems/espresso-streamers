@@ -70,9 +70,10 @@ func (b *BufferedEspressoStreamer[B]) handleL2PositionUpdate(nextPosition uint64
 		// If the next position is before the starting batch position,
 		// we need to reset the buffered streamer to ensure we don't
 		// miss any batches.
-		b.streamer.Reset()
+		b.readPos = 0
 		b.startingBatchPos = nextPosition
 		b.batches = make([]*B, 0)
+		b.streamer.Reset()
 		return
 	}
 
