@@ -70,10 +70,9 @@ func (b *BufferedEspressoStreamer[B]) handleL2PositionUpdate(nextPosition uint64
 		// If the next position is before the starting batch position,
 		// we need to reset the buffered streamer to ensure we don't
 		// miss any batches.
-		b.readPos = 0
+		b.streamer.Reset()
 		b.startingBatchPos = nextPosition
 		b.batches = make([]*B, 0)
-		b.streamer.Reset()
 		return
 	}
 
@@ -132,8 +131,10 @@ func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context, finalizedL1 e
 	return b.streamer.Refresh(ctx, finalizedL1, safeBatchNumber, safeL1Origin)
 }
 
-// Reset resets the buffered streamer state to the last known good
-// safe batch position.
+// Reset rewinds the start of the cached batch window.
+// 
+// Buffered batches are replayed from the safe starting point, but the underlying streamer is not
+// reset.
 func (b *BufferedEspressoStreamer[B]) Reset() {
 	// Reset the buffered streamer state
 	b.readPos = 0
