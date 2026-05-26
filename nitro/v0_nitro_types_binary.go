@@ -27,8 +27,10 @@ func (e ErrEncodedByteLengthMisMatch) Error() string {
 //	 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| Index (Big Endian uint64)                                     |
+//	|                                                               |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| Size (Big Endian uint64)                                      |
+//	|                                                               |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| RLP Encoded MessageWithMessageData (Size bytes long)          |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -73,8 +75,10 @@ func (m V0MessageAndIndex) MarshalBinary() ([]byte, error) {
 //	| (Repeat for each message)                                     |
 //	+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-+
 //	| Message i Index (Big Endian uint64)                           |
+//	|                                                               |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| Message i Size (Big Endian uint64)                            |
+//	|                                                               |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| Message i RLP Encoded MessageWithMessageData                  |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -117,8 +121,10 @@ func encodeV0MessageAndIndexes(messages []V0MessageAndIndex) (result []byte, err
 //	| (Repeat until entire transaction consumed)                    |
 //	+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-+
 //	| Message i Index (Big Endian uint64)                           |
+//	|                                                               |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| Message i Size (Big Endian uint64)                            |
+//	|                                                               |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| Message i RLP Encoded MessageWithMessageData                  |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -172,8 +178,10 @@ func (e ErrNotEnoughBytesRemaining) Error() string {
 //	 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| Index (Big Endian uint64)                                     |
+//	|                                                               |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| Size (Big Endian uint64)                                      |
+//	|                                                               |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| RLP Encoded MessageWithMessageData (Size bytes long)          |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -233,8 +241,10 @@ func (m *V0MessageAndIndex) UnmarshalBinary(data []byte) error {
 //	| (Repeat until entire transaction consumed)                    |
 //	+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-+
 //	| Message i Index (Big Endian uint64)                           |
+//	|                                                               |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| Message i Size (Big Endian uint64)                            |
+//	|                                                               |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| Message i RLP Encoded MessageWithMessageData                  |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -276,8 +286,10 @@ func parseV0MessageAndIndexes(data []byte) (result []V0MessageAndIndex, bytesRea
 //	| (Repeat until entire transaction consumed)                    |
 //	+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-+
 //	| Message i Index (Big Endian uint64)                           |
+//	|                                                               |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| Message i Size (Big Endian uint64)                            |
+//	|                                                               |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| Message i RLP Encoded MessageWithMessageData                  |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
