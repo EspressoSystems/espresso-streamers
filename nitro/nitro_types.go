@@ -55,3 +55,14 @@ type L1IncomingMessageHeader struct {
 	RequestId   *common.Hash   `json:"requestId" rlp:"nilList"`
 	L1BaseFee   *big.Int       `json:"baseFeeL1"`
 }
+
+type V0SignatureAndMessages struct {
+	Signature []byte
+	Hash      common.Hash
+	Messages  []V0MessageAndIndex
+}
+
+type V0MessageAndIndex struct {
+	Pos     uint64
+	Message MessageWithMetadata
+}

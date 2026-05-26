@@ -10,9 +10,11 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-const MAX_ATTESTATION_QUOTE_SIZE int = 4 * 1024
-const LEN_SIZE int = 8
-const INDEX_SIZE int = 8
+const (
+	MAX_ATTESTATION_QUOTE_SIZE = 4 * 1024
+	LEN_SIZE                   = 8
+	INDEX_SIZE                 = 8
+)
 
 type ShouldLogEnum int
 
