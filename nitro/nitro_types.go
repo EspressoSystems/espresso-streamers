@@ -66,3 +66,18 @@ type V0MessageAndIndex struct {
 	Pos     uint64
 	Message MessageWithMetadata
 }
+
+const V1Header = "V1"
+
+type V1BroadcastFeedMessage struct {
+	SequenceNumber       uint64              `json:"sequenceNumber"`
+	Message              MessageWithMetadata `json:"message"`
+	Signature            []byte              `json:"signature"`
+	BlockMetadata        []byte              `json:"blockMetadata",omitempty`
+	CumulativeSumMsgSize uint64              `json:"-"`
+	BlockHash            []byte              `json:"blockHash",omitempty`
+}
+
+type V1HeaderAndBroadcastFeedMessage struct {
+	Messages []V1BroadcastFeedMessage
+}
