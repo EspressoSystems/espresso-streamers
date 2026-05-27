@@ -10,7 +10,6 @@ import (
 	espressoTypes "github.com/EspressoSystems/espresso-network/sdks/go/types"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -195,20 +194,6 @@ func (s *EspressoStreamer) QueueMessagesFromHotshot(
 	// Don't jump to toBlock if reset() was called while we were fetching.
 	if s.nextHotshotBlockNum == startHotshotBlockNum {
 		s.nextHotshotBlockNum = toBlock
-	}
-	return nil
-}
-
-func (s *EspressoStreamer) verifyBatchPosterSignature(signature []byte, userDataHash [32]byte, l1Height uint64) error {
-	publicKey, err := crypto.SigToPub(userDataHash[:], signature)
-	if err != nil {
-		return fmt.Errorf("failed to convert signature to public key: %w", err)
-	}
-	addr := crypto.PubkeyToAddress(*publicKey)
-	valid := s.monitor.IsValid(addr, l1Height)
-	if !valid {
-		s.log.Error("address not valid", "addr", addr)
-		return fmt.Errorf("address not valid: %v", addr)
 	}
 	return nil
 }
