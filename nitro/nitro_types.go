@@ -78,6 +78,6 @@ type V1BroadcastFeedMessage struct {
 	BlockHash            []byte              `json:"blockHash",omitempty`
 }
 
-type V1HeaderAndBroadcastFeedMessage struct {
+type V1HeaderAndBroadcastFeedMessages struct {
 	Messages []V1BroadcastFeedMessage
 }

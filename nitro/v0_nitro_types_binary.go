@@ -11,8 +11,7 @@ import (
 // a mismatch between the length of the actual encoded bytes, and the length
 // that was expected.
 type ErrEncodedByteLengthMisMatch struct {
-	Have uint64
-	Want uint64
+	Have, Want uint64
 }
 
 // Error implements error
@@ -162,8 +161,7 @@ func (m V0SignatureAndMessages) MarshalBinary() ([]byte, error) {
 // ErrNotEnoughBytesRemaining is an error type indicating that there were
 // not enough bytes remaining in the input to parse a complete message or index.
 type ErrNotEnoughBytesRemaining struct {
-	Want uint64
-	Have uint64
+	Want, Have uint64
 }
 
 // Error implements error
