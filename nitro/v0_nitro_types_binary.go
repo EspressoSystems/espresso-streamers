@@ -169,7 +169,11 @@ func (e ErrNotEnoughBytesRemaining) Error() string {
 	return fmt.Sprintf("not enough bytes remaining to parse, have: %d, want: %d", e.Have, e.Want)
 }
 
-// parseV0MessageAndIndex parses a `v0MessageAndIndex` utilizing a format
+// ErrNoMessageData is a sentinel error that indicates that there was
+// no message data to consume
+var ErrNoMessageData = fmt.Errorf("message data was empty, expected at least 1 byte")
+
+// parseV0MessageAndIndex parses a `V0MessageAndIndex` utilizing a format
 // indicated by the following diagram:
 //
 //	 0                   1                   2                   3
@@ -199,6 +203,17 @@ func parseV0MessageAndIndex(data []byte) (result V0MessageAndIndex, bytesRead ui
 	// Extract the message size
 	messageLength := binary.BigEndian.Uint64(data[offset : offset+LEN_SIZE])
 	offset += LEN_SIZE
+
+	if messageLength == 0 {
+		// NOTE: I would consider this to be an invalid state. How can we have
+		// an "index" for position that indicates that we have a message to
+		// be serialized, but then haveno message contents. That seems like
+		// a contradiction. In either case we'd ultimately probably end up
+		// ignoring the contents of this message.
+		// That being said, I will account for this in order to facilitate
+		// compatability with the previous implementation.
+		return result, offset, ErrNoMessageData
+	}
 
 	if have, want := length, offset+messageLength; have < want {
 		return result, offset, fmt.Errorf(
@@ -254,6 +269,15 @@ func parseV0MessageAndIndexes(data []byte) (result []V0MessageAndIndex, bytesRea
 	// We iterate over the remainder of the message, until we're out of bytes.
 	for offset < length {
 		message, read, err := parseV0MessageAndIndex(data[offset:])
+		if err == ErrNoMessageData {
+			// There was no message contents. We'll just skip this and continue
+			// parsing the next message.
+			// NOTE: This is an edge case that we keep in order to appease the
+			// test, `TestEspressoEmptyTransaction`.
+			offset += read
+			continue
+		}
+
 		if err != nil {
 			return result, offset, err
 		}

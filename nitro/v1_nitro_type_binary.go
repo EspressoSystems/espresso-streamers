@@ -150,8 +150,8 @@ func encodeV1Header() ([]byte, error) {
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| (JSON Encoded encodeV1BroadcastFeedMessage)                   |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-func parseV1BroadcastFeedMessage(data []byte) (result V1BroadcastFeedMessage, numBytes uint64, err error) {
-	result, read, err := parseEmbeddedJSON[V1BroadcastFeedMessage](data)
+func parseV1BroadcastFeedMessage(data []byte) (result BroadcastFeedMessage, numBytes uint64, err error) {
+	result, read, err := parseEmbeddedJSON[BroadcastFeedMessage](data)
 	if err != nil {
 		return result, read, fmt.Errorf("unable to decode V1BroadcastFeedMessage: %w", err)
 	}
@@ -160,7 +160,7 @@ func parseV1BroadcastFeedMessage(data []byte) (result V1BroadcastFeedMessage, nu
 }
 
 // UnmarshalBinary implements encoding.BinaryUnmarshaler
-func (m *V1BroadcastFeedMessage) UnmarshalBinary(data []byte) error {
+func (m *BroadcastFeedMessage) UnmarshalBinary(data []byte) error {
 	result, _, err := parseV1BroadcastFeedMessage(data)
 	*m = result
 	return err
@@ -183,7 +183,7 @@ func (m *V1BroadcastFeedMessage) UnmarshalBinary(data []byte) error {
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| (Message i Embedded JSON of length Message i Number of Bytes) |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-func parseV1BroadcastFeedMessages(data []byte) (result []V1BroadcastFeedMessage, numBytes uint64, err error) {
+func parseV1BroadcastFeedMessages(data []byte) (result []BroadcastFeedMessage, numBytes uint64, err error) {
 	length := uint64(len(data))
 	offset := uint64(0)
 
@@ -237,6 +237,10 @@ func parseV1HeaderAndBroadcastFeedMessages(data []byte) (result V1HeaderAndBroad
 	offset += read
 
 	messages, read, err := parseV1BroadcastFeedMessages(data[offset:])
+	offset += read
+	if err != nil {
+		return result, offset, fmt.Errorf("failed to parse header: %w", err)
+	}
 	return V1HeaderAndBroadcastFeedMessages{
 		Messages: messages,
 	}, offset, nil
@@ -260,12 +264,12 @@ func (m *V1HeaderAndBroadcastFeedMessages) UnmarshalBinary(data []byte) error {
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| (JSON Encoded encodeV1BroadcastFeedMessage)                   |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-func encodeV1BroadcastFeedMessage(message V1BroadcastFeedMessage) ([]byte, error) {
-	return encodeEmbeddedJSON[V1BroadcastFeedMessage](message)
+func encodeV1BroadcastFeedMessage(message BroadcastFeedMessage) ([]byte, error) {
+	return encodeEmbeddedJSON[BroadcastFeedMessage](message)
 }
 
 // MarshalBinary implements encoding.BinaryMarshaler
-func (m V1BroadcastFeedMessage) MarshalBinary() ([]byte, error) {
+func (m BroadcastFeedMessage) MarshalBinary() ([]byte, error) {
 	return encodeV1BroadcastFeedMessage(m)
 }
 
@@ -285,7 +289,7 @@ func (m V1BroadcastFeedMessage) MarshalBinary() ([]byte, error) {
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //	| (Message i Embedded JSON of length Message i Number of Bytes) |
 //	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-func encodeV1BroadcastFeedMessages(messages []V1BroadcastFeedMessage) ([]byte, error) {
+func encodeV1BroadcastFeedMessages(messages []BroadcastFeedMessage) ([]byte, error) {
 	buffer := make([][]byte, 0, len(messages))
 	size := uint64(0)
 	for _, m := range messages {

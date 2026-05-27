@@ -67,17 +67,27 @@ type V0MessageAndIndex struct {
 	Message MessageWithMetadata
 }
 
+// V1Header represents the value that is utilized to indicate version 1
+// of the Nitro header.
 const V1Header = "V1"
 
-type V1BroadcastFeedMessage struct {
+// BroadcastFeedMessage represents the Nitro Message format that comes from
+// the Nitro feed stream. Version 1 of the Nitro chain being stored on
+// Espresso also utilizes this format.
+type BroadcastFeedMessage struct {
 	SequenceNumber       uint64              `json:"sequenceNumber"`
 	Message              MessageWithMetadata `json:"message"`
 	Signature            []byte              `json:"signature"`
-	BlockMetadata        []byte              `json:"blockMetadata",omitempty`
+	BlockMetadata        []byte              `json:"blockMetadata,omitempty"`
 	CumulativeSumMsgSize uint64              `json:"-"`
-	BlockHash            []byte              `json:"blockHash",omitempty`
+	BlockHash            []byte              `json:"blockHash,omitempty"`
 }
 
+// V1HeaderAndBroadcastFeedMessages represents the format of the messages that
+// are submitted and stored on Espresso.
+//
+// This format is prefixed with the V1Header, but since this is static and
+// non-changing, it can be easily omitted for convenience.
 type V1HeaderAndBroadcastFeedMessages struct {
-	Messages []V1BroadcastFeedMessage
+	Messages []BroadcastFeedMessage
 }

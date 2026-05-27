@@ -55,7 +55,7 @@ func TestBinaryDecodeingEspressoTransactionV0NitroMessage(t *testing.T) {
 	})
 
 	// Our Message also implements BinaryMashaler.
-	t.Run("enoding.BinaryMashaler should return original rawData again", func(t *testing.T) {
+	t.Run("encoding.BinaryMashaler should return original rawData again", func(t *testing.T) {
 		bytes, err := message.MarshalBinary()
 		assert.NoError(t, err, "MarshalBinary should not return an error")
 
