@@ -80,19 +80,19 @@ func encodeEmbeddedJSON[T any](value T) ([]byte, error) {
 func parseEmbeddedJSON[T any](data []byte) (result T, numBytes uint64, err error) {
 	length := uint64(len(data))
 	offset := uint64(0)
-	jsonContentLength := binary.BigEndian.Uint64(data[offset:])
-	if have, want := length, offset+LEN_SIZE; have < want {
+	if LEN_SIZE > length-offset {
 		return result, offset, fmt.Errorf(
 			"unable to determine json content length: %w",
-			ErrNotEnoughBytesRemaining{Have: have, Want: want},
+			ErrNotEnoughBytesRemaining{Have: length, Want: offset + LEN_SIZE},
 		)
 	}
+	jsonContentLength := binary.BigEndian.Uint64(data[offset:])
 	offset += LEN_SIZE
 
-	if have, want := length, offset+jsonContentLength; have < want {
+	if jsonContentLength > length-offset {
 		return result, offset, fmt.Errorf(
 			"unable to determine json content: %w",
-			ErrNotEnoughBytesRemaining{Have: have, Want: want},
+			ErrNotEnoughBytesRemaining{Have: length, Want: offset + jsonContentLength},
 		)
 	}
 	jsonContent := data[offset : offset+jsonContentLength]

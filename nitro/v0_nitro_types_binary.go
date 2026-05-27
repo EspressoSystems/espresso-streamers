@@ -192,10 +192,10 @@ func parseV0MessageAndIndex(data []byte) (result V0MessageAndIndex, bytesRead ui
 	offset := uint64(0)
 
 	// Extract the index
-	if have, want := length, offset+INDEX_SIZE+LEN_SIZE; have < want {
+	if INDEX_SIZE+LEN_SIZE > length-offset {
 		return result, offset, fmt.Errorf(
 			"not enough bytes for index and length in V0MessageandIndex: %w",
-			ErrNotEnoughBytesRemaining{Have: have, Want: want},
+			ErrNotEnoughBytesRemaining{Have: length, Want: offset + INDEX_SIZE + LEN_SIZE},
 		)
 	}
 	index := binary.BigEndian.Uint64(data[offset:])
@@ -215,10 +215,10 @@ func parseV0MessageAndIndex(data []byte) (result V0MessageAndIndex, bytesRead ui
 		return result, offset, ErrNoMessageData
 	}
 
-	if have, want := length, offset+messageLength; have < want {
+	if messageLength > length-offset {
 		return result, offset, fmt.Errorf(
 			"not enough bytes to hold message for V0MessageAndInex: %w",
-			ErrNotEnoughBytesRemaining{Have: have, Want: want},
+			ErrNotEnoughBytesRemaining{Have: length, Want: offset + messageLength},
 		)
 	}
 
@@ -319,10 +319,10 @@ func parseV0SignatureAndMessages(data []byte) (result V0SignatureAndMessages, by
 	length := uint64(len(data))
 	offset := uint64(0)
 
-	if have, want := length, uint64(LEN_SIZE); have < want {
+	if LEN_SIZE > length-offset {
 		return result, offset, fmt.Errorf(
 			"payload is too short for signature: %w",
-			ErrNotEnoughBytesRemaining{Have: have, Want: want},
+			ErrNotEnoughBytesRemaining{Have: length, Want: offset + LEN_SIZE},
 		)
 	}
 
@@ -330,10 +330,10 @@ func parseV0SignatureAndMessages(data []byte) (result V0SignatureAndMessages, by
 	signatureLength := binary.BigEndian.Uint64(data[offset : offset+LEN_SIZE])
 	offset += LEN_SIZE
 
-	if have, want := length, offset+signatureLength; have < want {
+	if signatureLength > length-offset {
 		return result, offset, fmt.Errorf(
 			"payload is too short for signature: %w",
-			ErrNotEnoughBytesRemaining{Have: have, Want: want},
+			ErrNotEnoughBytesRemaining{Have: length, Want: offset + signatureLength},
 		)
 	}
 
