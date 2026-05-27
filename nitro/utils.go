@@ -387,7 +387,7 @@ var version1HeaderPeek = []byte{0, 0, 0, 0, 0, 0, 0, 4, '"', 'V', '1', '"'}
 // for the messages contained within to be iterated over.
 func ParseNitroMessagesFromHotShot(payload []byte) (SignatureVerifierAndMessageIterable, error) {
 	// Peek for Version 1
-	if bytes.Equal(version1HeaderPeek, payload[0:len(version1HeaderPeek)]) {
+	if bytes.HasPrefix(payload, version1HeaderPeek) {
 		// This is a version 1 payload
 		var v1Msg V1HeaderAndBroadcastFeedMessages
 		if err := v1Msg.UnmarshalBinary(payload); err != nil {
