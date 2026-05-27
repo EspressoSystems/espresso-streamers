@@ -31,7 +31,7 @@ var (
 
 // BatchAuthenticatorMetaData contains all meta data concerning the BatchAuthenticator contract.
 var BatchAuthenticatorMetaData = &bind.MetaData{
-	ABI: "[{\"type\":\"constructor\",\"inputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"acceptOwnership\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"activeIsEspresso\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"addGuardian\",\"inputs\":[{\"name\":\"guardian\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"authenticateBatchInfo\",\"inputs\":[{\"name\":\"commitment\",\"type\":\"bytes32\",\"internalType\":\"bytes32\"},{\"name\":\"_signature\",\"type\":\"bytes\",\"internalType\":\"bytes\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"espressoBatcher\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"espressoTEEVerifier\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"contractIEspressoTEEVerifier\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"getGuardians\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address[]\",\"internalType\":\"address[]\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"guardianCount\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint256\",\"internalType\":\"uint256\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"initVersion\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"uint8\",\"internalType\":\"uint8\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"initialize\",\"inputs\":[{\"name\":\"_espressoTEEVerifier\",\"type\":\"address\",\"internalType\":\"contractIEspressoTEEVerifier\"},{\"name\":\"_espressoBatcher\",\"type\":\"address\",\"internalType\":\"address\"},{\"name\":\"_systemConfig\",\"type\":\"address\",\"internalType\":\"contractISystemConfig\"},{\"name\":\"_owner\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"isGuardian\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"nitroValidator\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"owner\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"paused\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"bool\",\"internalType\":\"bool\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"pendingOwner\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"proxyAdmin\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"contractIProxyAdmin\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"proxyAdminOwner\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"address\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"registerSigner\",\"inputs\":[{\"name\":\"verificationData\",\"type\":\"bytes\",\"internalType\":\"bytes\"},{\"name\":\"data\",\"type\":\"bytes\",\"internalType\":\"bytes\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"removeGuardian\",\"inputs\":[{\"name\":\"guardian\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"renounceOwnership\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"setEspressoBatcher\",\"inputs\":[{\"name\":\"_newEspressoBatcher\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"switchBatcher\",\"inputs\":[],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"systemConfig\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"address\",\"internalType\":\"contractISystemConfig\"}],\"stateMutability\":\"view\"},{\"type\":\"function\",\"name\":\"transferOwnership\",\"inputs\":[{\"name\":\"newOwner\",\"type\":\"address\",\"internalType\":\"address\"}],\"outputs\":[],\"stateMutability\":\"nonpayable\"},{\"type\":\"function\",\"name\":\"version\",\"inputs\":[],\"outputs\":[{\"name\":\"\",\"type\":\"string\",\"internalType\":\"string\"}],\"stateMutability\":\"view\"},{\"type\":\"event\",\"name\":\"BatchInfoAuthenticated\",\"inputs\":[{\"name\":\"commitment\",\"type\":\"bytes32\",\"indexed\":true,\"internalType\":\"bytes32\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"BatcherSwitched\",\"inputs\":[{\"name\":\"activeIsEspresso\",\"type\":\"bool\",\"indexed\":true,\"internalType\":\"bool\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"EspressoBatcherUpdated\",\"inputs\":[{\"name\":\"oldEspressoBatcher\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newEspressoBatcher\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"GuardianAdded\",\"inputs\":[{\"name\":\"guardian\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"GuardianRemoved\",\"inputs\":[{\"name\":\"guardian\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"Initialized\",\"inputs\":[{\"name\":\"version\",\"type\":\"uint64\",\"indexed\":false,\"internalType\":\"uint64\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OwnershipTransferStarted\",\"inputs\":[{\"name\":\"previousOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"OwnershipTransferred\",\"inputs\":[{\"name\":\"previousOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"},{\"name\":\"newOwner\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"event\",\"name\":\"SignerRegistrationInitiated\",\"inputs\":[{\"name\":\"caller\",\"type\":\"address\",\"indexed\":true,\"internalType\":\"address\"}],\"anonymous\":false},{\"type\":\"error\",\"name\":\"BatchAuthenticator_Paused\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidAddress\",\"inputs\":[{\"name\":\"contract_\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"InvalidGuardianAddress\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"InvalidInitialization\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"NotGuardian\",\"inputs\":[{\"name\":\"caller\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"NotGuardianOrOwner\",\"inputs\":[{\"name\":\"caller\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"NotInitializing\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"OwnableInvalidOwner\",\"inputs\":[{\"name\":\"owner\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"OwnableUnauthorizedAccount\",\"inputs\":[{\"name\":\"account\",\"type\":\"address\",\"internalType\":\"address\"}]},{\"type\":\"error\",\"name\":\"OwnerCantBeGuardian\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ProxyAdminOwnedBase_NotProxyAdmin\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ProxyAdminOwnedBase_NotProxyAdminOrProxyAdminOwner\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ProxyAdminOwnedBase_NotProxyAdminOwner\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ProxyAdminOwnedBase_NotResolvedDelegateProxy\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ProxyAdminOwnedBase_NotSharedProxyAdminOwner\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ProxyAdminOwnedBase_ProxyAdminNotFound\",\"inputs\":[]},{\"type\":\"error\",\"name\":\"ReinitializableBase_ZeroInitVersion\",\"inputs\":[]}]",
+	ABI: "[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"acceptOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"activeIsEspresso\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"guardian\",\"type\":\"address\"}],\"name\":\"addGuardian\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"_commitment\",\"type\":\"bytes32\"},{\"internalType\":\"bytes\",\"name\":\"_signature\",\"type\":\"bytes\"}],\"name\":\"authenticateBatchInfo\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"espressoBatcher\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"index\",\"type\":\"uint256\"}],\"name\":\"espressoBatcherAt\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"batcher\",\"type\":\"address\"},{\"internalType\":\"uint64\",\"name\":\"fromBlock\",\"type\":\"uint64\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint64\",\"name\":\"l1Block\",\"type\":\"uint64\"}],\"name\":\"espressoBatcherAtBlock\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"espressoBatcherHistoryLength\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"espressoTEEVerifier\",\"outputs\":[{\"internalType\":\"contractIEspressoTEEVerifier\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getGuardians\",\"outputs\":[{\"internalType\":\"address[]\",\"name\":\"\",\"type\":\"address[]\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"guardianCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"initVersion\",\"outputs\":[{\"internalType\":\"uint8\",\"name\":\"\",\"type\":\"uint8\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"contractIEspressoTEEVerifier\",\"name\":\"_espressoTEEVerifier\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_espressoBatcher\",\"type\":\"address\"},{\"internalType\":\"contractISystemConfig\",\"name\":\"_systemConfig\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_owner\",\"type\":\"address\"},{\"internalType\":\"bool\",\"name\":\"_activeIsEspresso\",\"type\":\"bool\"}],\"name\":\"initialize\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"isGuardian\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"nitroValidator\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"paused\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"pendingOwner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"proxyAdmin\",\"outputs\":[{\"internalType\":\"contractIProxyAdmin\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"proxyAdminOwner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"_verificationData\",\"type\":\"bytes\"},{\"internalType\":\"bytes\",\"name\":\"_data\",\"type\":\"bytes\"}],\"name\":\"registerSigner\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"guardian\",\"type\":\"address\"}],\"name\":\"removeGuardian\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_newEspressoBatcher\",\"type\":\"address\"}],\"name\":\"setEspressoBatcher\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"switchBatcher\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"systemConfig\",\"outputs\":[{\"internalType\":\"contractISystemConfig\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"version\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"commitment\",\"type\":\"bytes32\"}],\"name\":\"BatchInfoAuthenticated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bool\",\"name\":\"activeIsEspresso\",\"type\":\"bool\"}],\"name\":\"BatcherSwitched\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"oldEspressoBatcher\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newEspressoBatcher\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"uint64\",\"name\":\"fromBlock\",\"type\":\"uint64\"}],\"name\":\"EspressoBatcherUpdated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"guardian\",\"type\":\"address\"}],\"name\":\"GuardianAdded\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"guardian\",\"type\":\"address\"}],\"name\":\"GuardianRemoved\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"version\",\"type\":\"uint64\"}],\"name\":\"Initialized\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferStarted\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"caller\",\"type\":\"address\"}],\"name\":\"SignerRegistrationInitiated\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"BatchAuthenticator_Paused\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"contract_\",\"type\":\"address\"}],\"name\":\"InvalidAddress\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidGuardianAddress\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidInitialization\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"batcher\",\"type\":\"address\"}],\"name\":\"NoChange\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"caller\",\"type\":\"address\"}],\"name\":\"NotGuardian\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"caller\",\"type\":\"address\"}],\"name\":\"NotGuardianOrOwner\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"NotInitializing\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"owner\",\"type\":\"address\"}],\"name\":\"OwnableInvalidOwner\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"account\",\"type\":\"address\"}],\"name\":\"OwnableUnauthorizedAccount\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"OwnerCantBeGuardian\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProxyAdminOwnedBase_NotProxyAdmin\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProxyAdminOwnedBase_NotProxyAdminOrProxyAdminOwner\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProxyAdminOwnedBase_NotProxyAdminOwner\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProxyAdminOwnedBase_NotResolvedDelegateProxy\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProxyAdminOwnedBase_NotSharedProxyAdminOwner\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProxyAdminOwnedBase_ProxyAdminNotFound\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ReinitializableBase_ZeroInitVersion\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"sender\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"expected\",\"type\":\"address\"}],\"name\":\"UnauthorizedFallbackBatcher\",\"type\":\"error\"}]",
 }
 
 // BatchAuthenticatorABI is the input ABI used to generate the binding from.
@@ -240,6 +240,113 @@ func (_BatchAuthenticator *BatchAuthenticatorSession) EspressoBatcher() (common.
 // Solidity: function espressoBatcher() view returns(address)
 func (_BatchAuthenticator *BatchAuthenticatorCallerSession) EspressoBatcher() (common.Address, error) {
 	return _BatchAuthenticator.Contract.EspressoBatcher(&_BatchAuthenticator.CallOpts)
+}
+
+// EspressoBatcherAt is a free data retrieval call binding the contract method 0xda2bf599.
+//
+// Solidity: function espressoBatcherAt(uint256 index) view returns(address batcher, uint64 fromBlock)
+func (_BatchAuthenticator *BatchAuthenticatorCaller) EspressoBatcherAt(opts *bind.CallOpts, index *big.Int) (struct {
+	Batcher   common.Address
+	FromBlock uint64
+}, error) {
+	var out []interface{}
+	err := _BatchAuthenticator.contract.Call(opts, &out, "espressoBatcherAt", index)
+
+	outstruct := new(struct {
+		Batcher   common.Address
+		FromBlock uint64
+	})
+	if err != nil {
+		return *outstruct, err
+	}
+
+	outstruct.Batcher = *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
+	outstruct.FromBlock = *abi.ConvertType(out[1], new(uint64)).(*uint64)
+
+	return *outstruct, err
+
+}
+
+// EspressoBatcherAt is a free data retrieval call binding the contract method 0xda2bf599.
+//
+// Solidity: function espressoBatcherAt(uint256 index) view returns(address batcher, uint64 fromBlock)
+func (_BatchAuthenticator *BatchAuthenticatorSession) EspressoBatcherAt(index *big.Int) (struct {
+	Batcher   common.Address
+	FromBlock uint64
+}, error) {
+	return _BatchAuthenticator.Contract.EspressoBatcherAt(&_BatchAuthenticator.CallOpts, index)
+}
+
+// EspressoBatcherAt is a free data retrieval call binding the contract method 0xda2bf599.
+//
+// Solidity: function espressoBatcherAt(uint256 index) view returns(address batcher, uint64 fromBlock)
+func (_BatchAuthenticator *BatchAuthenticatorCallerSession) EspressoBatcherAt(index *big.Int) (struct {
+	Batcher   common.Address
+	FromBlock uint64
+}, error) {
+	return _BatchAuthenticator.Contract.EspressoBatcherAt(&_BatchAuthenticator.CallOpts, index)
+}
+
+// EspressoBatcherAtBlock is a free data retrieval call binding the contract method 0x7d531a78.
+//
+// Solidity: function espressoBatcherAtBlock(uint64 l1Block) view returns(address)
+func (_BatchAuthenticator *BatchAuthenticatorCaller) EspressoBatcherAtBlock(opts *bind.CallOpts, l1Block uint64) (common.Address, error) {
+	var out []interface{}
+	err := _BatchAuthenticator.contract.Call(opts, &out, "espressoBatcherAtBlock", l1Block)
+
+	if err != nil {
+		return *new(common.Address), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
+
+	return out0, err
+
+}
+
+// EspressoBatcherAtBlock is a free data retrieval call binding the contract method 0x7d531a78.
+//
+// Solidity: function espressoBatcherAtBlock(uint64 l1Block) view returns(address)
+func (_BatchAuthenticator *BatchAuthenticatorSession) EspressoBatcherAtBlock(l1Block uint64) (common.Address, error) {
+	return _BatchAuthenticator.Contract.EspressoBatcherAtBlock(&_BatchAuthenticator.CallOpts, l1Block)
+}
+
+// EspressoBatcherAtBlock is a free data retrieval call binding the contract method 0x7d531a78.
+//
+// Solidity: function espressoBatcherAtBlock(uint64 l1Block) view returns(address)
+func (_BatchAuthenticator *BatchAuthenticatorCallerSession) EspressoBatcherAtBlock(l1Block uint64) (common.Address, error) {
+	return _BatchAuthenticator.Contract.EspressoBatcherAtBlock(&_BatchAuthenticator.CallOpts, l1Block)
+}
+
+// EspressoBatcherHistoryLength is a free data retrieval call binding the contract method 0x4268ecaa.
+//
+// Solidity: function espressoBatcherHistoryLength() view returns(uint256)
+func (_BatchAuthenticator *BatchAuthenticatorCaller) EspressoBatcherHistoryLength(opts *bind.CallOpts) (*big.Int, error) {
+	var out []interface{}
+	err := _BatchAuthenticator.contract.Call(opts, &out, "espressoBatcherHistoryLength")
+
+	if err != nil {
+		return *new(*big.Int), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(*big.Int)).(**big.Int)
+
+	return out0, err
+
+}
+
+// EspressoBatcherHistoryLength is a free data retrieval call binding the contract method 0x4268ecaa.
+//
+// Solidity: function espressoBatcherHistoryLength() view returns(uint256)
+func (_BatchAuthenticator *BatchAuthenticatorSession) EspressoBatcherHistoryLength() (*big.Int, error) {
+	return _BatchAuthenticator.Contract.EspressoBatcherHistoryLength(&_BatchAuthenticator.CallOpts)
+}
+
+// EspressoBatcherHistoryLength is a free data retrieval call binding the contract method 0x4268ecaa.
+//
+// Solidity: function espressoBatcherHistoryLength() view returns(uint256)
+func (_BatchAuthenticator *BatchAuthenticatorCallerSession) EspressoBatcherHistoryLength() (*big.Int, error) {
+	return _BatchAuthenticator.Contract.EspressoBatcherHistoryLength(&_BatchAuthenticator.CallOpts)
 }
 
 // EspressoTEEVerifier is a free data retrieval call binding the contract method 0xfa14fe6d.
@@ -689,65 +796,65 @@ func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) AddGuardian(guar
 
 // AuthenticateBatchInfo is a paid mutator transaction binding the contract method 0xfc619e41.
 //
-// Solidity: function authenticateBatchInfo(bytes32 commitment, bytes _signature) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactor) AuthenticateBatchInfo(opts *bind.TransactOpts, commitment [32]byte, _signature []byte) (*types.Transaction, error) {
-	return _BatchAuthenticator.contract.Transact(opts, "authenticateBatchInfo", commitment, _signature)
+// Solidity: function authenticateBatchInfo(bytes32 _commitment, bytes _signature) returns()
+func (_BatchAuthenticator *BatchAuthenticatorTransactor) AuthenticateBatchInfo(opts *bind.TransactOpts, _commitment [32]byte, _signature []byte) (*types.Transaction, error) {
+	return _BatchAuthenticator.contract.Transact(opts, "authenticateBatchInfo", _commitment, _signature)
 }
 
 // AuthenticateBatchInfo is a paid mutator transaction binding the contract method 0xfc619e41.
 //
-// Solidity: function authenticateBatchInfo(bytes32 commitment, bytes _signature) returns()
-func (_BatchAuthenticator *BatchAuthenticatorSession) AuthenticateBatchInfo(commitment [32]byte, _signature []byte) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.AuthenticateBatchInfo(&_BatchAuthenticator.TransactOpts, commitment, _signature)
+// Solidity: function authenticateBatchInfo(bytes32 _commitment, bytes _signature) returns()
+func (_BatchAuthenticator *BatchAuthenticatorSession) AuthenticateBatchInfo(_commitment [32]byte, _signature []byte) (*types.Transaction, error) {
+	return _BatchAuthenticator.Contract.AuthenticateBatchInfo(&_BatchAuthenticator.TransactOpts, _commitment, _signature)
 }
 
 // AuthenticateBatchInfo is a paid mutator transaction binding the contract method 0xfc619e41.
 //
-// Solidity: function authenticateBatchInfo(bytes32 commitment, bytes _signature) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) AuthenticateBatchInfo(commitment [32]byte, _signature []byte) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.AuthenticateBatchInfo(&_BatchAuthenticator.TransactOpts, commitment, _signature)
+// Solidity: function authenticateBatchInfo(bytes32 _commitment, bytes _signature) returns()
+func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) AuthenticateBatchInfo(_commitment [32]byte, _signature []byte) (*types.Transaction, error) {
+	return _BatchAuthenticator.Contract.AuthenticateBatchInfo(&_BatchAuthenticator.TransactOpts, _commitment, _signature)
 }
 
-// Initialize is a paid mutator transaction binding the contract method 0xf8c8765e.
+// Initialize is a paid mutator transaction binding the contract method 0xfc5b5fda.
 //
-// Solidity: function initialize(address _espressoTEEVerifier, address _espressoBatcher, address _systemConfig, address _owner) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactor) Initialize(opts *bind.TransactOpts, _espressoTEEVerifier common.Address, _espressoBatcher common.Address, _systemConfig common.Address, _owner common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.contract.Transact(opts, "initialize", _espressoTEEVerifier, _espressoBatcher, _systemConfig, _owner)
+// Solidity: function initialize(address _espressoTEEVerifier, address _espressoBatcher, address _systemConfig, address _owner, bool _activeIsEspresso) returns()
+func (_BatchAuthenticator *BatchAuthenticatorTransactor) Initialize(opts *bind.TransactOpts, _espressoTEEVerifier common.Address, _espressoBatcher common.Address, _systemConfig common.Address, _owner common.Address, _activeIsEspresso bool) (*types.Transaction, error) {
+	return _BatchAuthenticator.contract.Transact(opts, "initialize", _espressoTEEVerifier, _espressoBatcher, _systemConfig, _owner, _activeIsEspresso)
 }
 
-// Initialize is a paid mutator transaction binding the contract method 0xf8c8765e.
+// Initialize is a paid mutator transaction binding the contract method 0xfc5b5fda.
 //
-// Solidity: function initialize(address _espressoTEEVerifier, address _espressoBatcher, address _systemConfig, address _owner) returns()
-func (_BatchAuthenticator *BatchAuthenticatorSession) Initialize(_espressoTEEVerifier common.Address, _espressoBatcher common.Address, _systemConfig common.Address, _owner common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.Initialize(&_BatchAuthenticator.TransactOpts, _espressoTEEVerifier, _espressoBatcher, _systemConfig, _owner)
+// Solidity: function initialize(address _espressoTEEVerifier, address _espressoBatcher, address _systemConfig, address _owner, bool _activeIsEspresso) returns()
+func (_BatchAuthenticator *BatchAuthenticatorSession) Initialize(_espressoTEEVerifier common.Address, _espressoBatcher common.Address, _systemConfig common.Address, _owner common.Address, _activeIsEspresso bool) (*types.Transaction, error) {
+	return _BatchAuthenticator.Contract.Initialize(&_BatchAuthenticator.TransactOpts, _espressoTEEVerifier, _espressoBatcher, _systemConfig, _owner, _activeIsEspresso)
 }
 
-// Initialize is a paid mutator transaction binding the contract method 0xf8c8765e.
+// Initialize is a paid mutator transaction binding the contract method 0xfc5b5fda.
 //
-// Solidity: function initialize(address _espressoTEEVerifier, address _espressoBatcher, address _systemConfig, address _owner) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) Initialize(_espressoTEEVerifier common.Address, _espressoBatcher common.Address, _systemConfig common.Address, _owner common.Address) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.Initialize(&_BatchAuthenticator.TransactOpts, _espressoTEEVerifier, _espressoBatcher, _systemConfig, _owner)
-}
-
-// RegisterSigner is a paid mutator transaction binding the contract method 0xba58e82a.
-//
-// Solidity: function registerSigner(bytes verificationData, bytes data) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactor) RegisterSigner(opts *bind.TransactOpts, verificationData []byte, data []byte) (*types.Transaction, error) {
-	return _BatchAuthenticator.contract.Transact(opts, "registerSigner", verificationData, data)
+// Solidity: function initialize(address _espressoTEEVerifier, address _espressoBatcher, address _systemConfig, address _owner, bool _activeIsEspresso) returns()
+func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) Initialize(_espressoTEEVerifier common.Address, _espressoBatcher common.Address, _systemConfig common.Address, _owner common.Address, _activeIsEspresso bool) (*types.Transaction, error) {
+	return _BatchAuthenticator.Contract.Initialize(&_BatchAuthenticator.TransactOpts, _espressoTEEVerifier, _espressoBatcher, _systemConfig, _owner, _activeIsEspresso)
 }
 
 // RegisterSigner is a paid mutator transaction binding the contract method 0xba58e82a.
 //
-// Solidity: function registerSigner(bytes verificationData, bytes data) returns()
-func (_BatchAuthenticator *BatchAuthenticatorSession) RegisterSigner(verificationData []byte, data []byte) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.RegisterSigner(&_BatchAuthenticator.TransactOpts, verificationData, data)
+// Solidity: function registerSigner(bytes _verificationData, bytes _data) returns()
+func (_BatchAuthenticator *BatchAuthenticatorTransactor) RegisterSigner(opts *bind.TransactOpts, _verificationData []byte, _data []byte) (*types.Transaction, error) {
+	return _BatchAuthenticator.contract.Transact(opts, "registerSigner", _verificationData, _data)
 }
 
 // RegisterSigner is a paid mutator transaction binding the contract method 0xba58e82a.
 //
-// Solidity: function registerSigner(bytes verificationData, bytes data) returns()
-func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) RegisterSigner(verificationData []byte, data []byte) (*types.Transaction, error) {
-	return _BatchAuthenticator.Contract.RegisterSigner(&_BatchAuthenticator.TransactOpts, verificationData, data)
+// Solidity: function registerSigner(bytes _verificationData, bytes _data) returns()
+func (_BatchAuthenticator *BatchAuthenticatorSession) RegisterSigner(_verificationData []byte, _data []byte) (*types.Transaction, error) {
+	return _BatchAuthenticator.Contract.RegisterSigner(&_BatchAuthenticator.TransactOpts, _verificationData, _data)
+}
+
+// RegisterSigner is a paid mutator transaction binding the contract method 0xba58e82a.
+//
+// Solidity: function registerSigner(bytes _verificationData, bytes _data) returns()
+func (_BatchAuthenticator *BatchAuthenticatorTransactorSession) RegisterSigner(_verificationData []byte, _data []byte) (*types.Transaction, error) {
+	return _BatchAuthenticator.Contract.RegisterSigner(&_BatchAuthenticator.TransactOpts, _verificationData, _data)
 }
 
 // RemoveGuardian is a paid mutator transaction binding the contract method 0x71404156.
@@ -1214,13 +1321,14 @@ func (it *BatchAuthenticatorEspressoBatcherUpdatedIterator) Close() error {
 type BatchAuthenticatorEspressoBatcherUpdated struct {
 	OldEspressoBatcher common.Address
 	NewEspressoBatcher common.Address
+	FromBlock          uint64
 	Raw                types.Log // Blockchain specific contextual infos
 }
 
-// FilterEspressoBatcherUpdated is a free log retrieval operation binding the contract event 0xc7bef7b97a10ef514a01fa4d5552f5c57e72a37aa901f567bb49bbf9ea449f9c.
+// FilterEspressoBatcherUpdated is a free log retrieval operation binding the contract event 0xcf8f6f62babb05dd1d159c090ad8429ee0df72e16c82701004a5405f908cb0f5.
 //
-// Solidity: event EspressoBatcherUpdated(address indexed oldEspressoBatcher, address indexed newEspressoBatcher)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) FilterEspressoBatcherUpdated(opts *bind.FilterOpts, oldEspressoBatcher []common.Address, newEspressoBatcher []common.Address) (*BatchAuthenticatorEspressoBatcherUpdatedIterator, error) {
+// Solidity: event EspressoBatcherUpdated(address indexed oldEspressoBatcher, address indexed newEspressoBatcher, uint64 indexed fromBlock)
+func (_BatchAuthenticator *BatchAuthenticatorFilterer) FilterEspressoBatcherUpdated(opts *bind.FilterOpts, oldEspressoBatcher []common.Address, newEspressoBatcher []common.Address, fromBlock []uint64) (*BatchAuthenticatorEspressoBatcherUpdatedIterator, error) {
 
 	var oldEspressoBatcherRule []interface{}
 	for _, oldEspressoBatcherItem := range oldEspressoBatcher {
@@ -1230,18 +1338,22 @@ func (_BatchAuthenticator *BatchAuthenticatorFilterer) FilterEspressoBatcherUpda
 	for _, newEspressoBatcherItem := range newEspressoBatcher {
 		newEspressoBatcherRule = append(newEspressoBatcherRule, newEspressoBatcherItem)
 	}
+	var fromBlockRule []interface{}
+	for _, fromBlockItem := range fromBlock {
+		fromBlockRule = append(fromBlockRule, fromBlockItem)
+	}
 
-	logs, sub, err := _BatchAuthenticator.contract.FilterLogs(opts, "EspressoBatcherUpdated", oldEspressoBatcherRule, newEspressoBatcherRule)
+	logs, sub, err := _BatchAuthenticator.contract.FilterLogs(opts, "EspressoBatcherUpdated", oldEspressoBatcherRule, newEspressoBatcherRule, fromBlockRule)
 	if err != nil {
 		return nil, err
 	}
 	return &BatchAuthenticatorEspressoBatcherUpdatedIterator{contract: _BatchAuthenticator.contract, event: "EspressoBatcherUpdated", logs: logs, sub: sub}, nil
 }
 
-// WatchEspressoBatcherUpdated is a free log subscription operation binding the contract event 0xc7bef7b97a10ef514a01fa4d5552f5c57e72a37aa901f567bb49bbf9ea449f9c.
+// WatchEspressoBatcherUpdated is a free log subscription operation binding the contract event 0xcf8f6f62babb05dd1d159c090ad8429ee0df72e16c82701004a5405f908cb0f5.
 //
-// Solidity: event EspressoBatcherUpdated(address indexed oldEspressoBatcher, address indexed newEspressoBatcher)
-func (_BatchAuthenticator *BatchAuthenticatorFilterer) WatchEspressoBatcherUpdated(opts *bind.WatchOpts, sink chan<- *BatchAuthenticatorEspressoBatcherUpdated, oldEspressoBatcher []common.Address, newEspressoBatcher []common.Address) (event.Subscription, error) {
+// Solidity: event EspressoBatcherUpdated(address indexed oldEspressoBatcher, address indexed newEspressoBatcher, uint64 indexed fromBlock)
+func (_BatchAuthenticator *BatchAuthenticatorFilterer) WatchEspressoBatcherUpdated(opts *bind.WatchOpts, sink chan<- *BatchAuthenticatorEspressoBatcherUpdated, oldEspressoBatcher []common.Address, newEspressoBatcher []common.Address, fromBlock []uint64) (event.Subscription, error) {
 
 	var oldEspressoBatcherRule []interface{}
 	for _, oldEspressoBatcherItem := range oldEspressoBatcher {
@@ -1251,8 +1363,12 @@ func (_BatchAuthenticator *BatchAuthenticatorFilterer) WatchEspressoBatcherUpdat
 	for _, newEspressoBatcherItem := range newEspressoBatcher {
 		newEspressoBatcherRule = append(newEspressoBatcherRule, newEspressoBatcherItem)
 	}
+	var fromBlockRule []interface{}
+	for _, fromBlockItem := range fromBlock {
+		fromBlockRule = append(fromBlockRule, fromBlockItem)
+	}
 
-	logs, sub, err := _BatchAuthenticator.contract.WatchLogs(opts, "EspressoBatcherUpdated", oldEspressoBatcherRule, newEspressoBatcherRule)
+	logs, sub, err := _BatchAuthenticator.contract.WatchLogs(opts, "EspressoBatcherUpdated", oldEspressoBatcherRule, newEspressoBatcherRule, fromBlockRule)
 	if err != nil {
 		return nil, err
 	}
@@ -1284,9 +1400,9 @@ func (_BatchAuthenticator *BatchAuthenticatorFilterer) WatchEspressoBatcherUpdat
 	}), nil
 }
 
-// ParseEspressoBatcherUpdated is a log parse operation binding the contract event 0xc7bef7b97a10ef514a01fa4d5552f5c57e72a37aa901f567bb49bbf9ea449f9c.
+// ParseEspressoBatcherUpdated is a log parse operation binding the contract event 0xcf8f6f62babb05dd1d159c090ad8429ee0df72e16c82701004a5405f908cb0f5.
 //
-// Solidity: event EspressoBatcherUpdated(address indexed oldEspressoBatcher, address indexed newEspressoBatcher)
+// Solidity: event EspressoBatcherUpdated(address indexed oldEspressoBatcher, address indexed newEspressoBatcher, uint64 indexed fromBlock)
 func (_BatchAuthenticator *BatchAuthenticatorFilterer) ParseEspressoBatcherUpdated(log types.Log) (*BatchAuthenticatorEspressoBatcherUpdated, error) {
 	event := new(BatchAuthenticatorEspressoBatcherUpdated)
 	if err := _BatchAuthenticator.contract.UnpackLog(event, "EspressoBatcherUpdated", log); err != nil {
