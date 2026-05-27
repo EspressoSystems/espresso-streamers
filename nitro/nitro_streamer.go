@@ -259,18 +259,13 @@ func (s *EspressoStreamer) parseEspressoTransaction(tx espressoTypes.Bytes, l1He
 
 	s.messageLock.Lock()
 	defer s.messageLock.Unlock()
-	first := true
 
 	for {
 		msg, ok := iterator.NextMessage(s.nextHotshotBlockNum)
 		if !ok {
 			// We're out of messages
-			if first {
-				return ErrPayloadHadNoMessages
-			}
 			break
 		}
-		first = false
 
 		if msg.Pos < s.currentMessagePos {
 			log.Warn("message index is less than current message pos, skipping", "msgPos", msg.Pos, "currentMessagePos", s.currentMessagePos)
