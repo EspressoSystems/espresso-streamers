@@ -239,7 +239,7 @@ func parseV1HeaderAndBroadcastFeedMessages(data []byte) (result V1HeaderAndBroad
 	messages, read, err := parseV1BroadcastFeedMessages(data[offset:])
 	offset += read
 	if err != nil {
-		return result, offset, fmt.Errorf("failed to parse header: %w", err)
+		return result, offset, fmt.Errorf("failed to parse broadcast feed messages: %w", err)
 	}
 	return V1HeaderAndBroadcastFeedMessages{
 		Messages: messages,
