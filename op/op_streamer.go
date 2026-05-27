@@ -279,10 +279,32 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 			return BatchUndecided
 		}
 
-		espressoBatcher, err := s.BatchAuthenticatorCaller.EspressoBatcher(&bind.CallOpts{BlockNumber: blockNumber})
+		// Query the on-chain batcher history at this L1 origin. The eth_call
+		// itself is issued at the streamer's known finalized L1 block so the
+		// contract sees a stable view of the (append-only) history and we
+		// don't need an archive node to serve a historical state read.
+		// `origin.Number <= s.FinalizedL1.Number` is already guaranteed above.
+		espressoBatcher, err := s.BatchAuthenticatorCaller.EspressoBatcherAtBlock(
+			&bind.CallOpts{BlockNumber: new(big.Int).SetUint64(s.FinalizedL1.Number)},
+			origin.Number,
+		)
 		if err != nil {
-			s.Log.Warn("Failed to fetch the espresso batcher address, pending resync", "error", err)
+			s.Log.Warn("Failed to fetch the espresso batcher address, pending resync",
+				"originNumber", origin.Number,
+				"finalizedL1", s.FinalizedL1.Number,
+				"error", err)
 			return BatchUndecided
+		}
+
+		// `espressoBatcherAtBlock` returns the zero address if `origin.Number`
+		// precedes the first history entry (i.e. there was no authorized
+		// Espresso batcher at that L1 height). The batch can't be authentic in
+		// that window — drop it rather than waiting around.
+		if espressoBatcher == (common.Address{}) {
+			s.Log.Info(DroppingBatchLogPrefix+" with no authorized espresso batcher at L1 origin",
+				"batch", batch.Hash(),
+				"originNumber", origin.Number)
+			return BatchDrop
 		}
 
 		state = l1State{
