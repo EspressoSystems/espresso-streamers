@@ -163,17 +163,16 @@ func (e ErrHashLengthMismatch) Error() string {
 //
 // nolint:errcheck
 func ComputeBroadcastFeedMessageHash(message BroadcastFeedMessage, chainID uint64) (result common.Hash, err error) {
-	l1Msg := message.Message.Message
-	header := message.Message.Message.Header
-
 	// Sanity checks
-	if l1Msg == nil {
+	if message.Message.Message == nil {
 		return result, ErrBroadcastFeeMessageMissingL1IncomingMessage{Message: message, ChainID: chainID}
 	}
+	l1Msg := message.Message.Message
 
-	if header == nil {
+	if l1Msg.Header == nil {
 		return result, ErrBroadcastFeeMessageMissingL1IncomingMessageHeader{Message: message, ChainID: chainID}
 	}
+	header := l1Msg.Header
 
 	hasher := crypto.NewKeccakState()
 
