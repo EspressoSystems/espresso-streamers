@@ -1583,6 +1583,87 @@ func TestSetProperHeadNilHeadBatch(t *testing.T) {
 	})
 }
 
+// TestCheckBatchSignerPreFilter verifies the espressoBatcher pre-filter in CheckBatch.
+func TestCheckBatchSignerPreFilter(t *testing.T) {
+	ctx := context.Background()
+
+	makeBatch := func(epochNum uint64, signer common.Address) derivation.EspressoBatch {
+		return derivation.EspressoBatch{
+			BatchHeader: &geth_types.Header{
+				Number: big.NewInt(2),
+			},
+			Batch: derive.SingularBatch{
+				EpochNum:  rollup.Epoch(epochNum),
+				EpochHash: createHashFromHeight(epochNum),
+				Timestamp: 1,
+			},
+			L1InfoDeposit: geth_types.NewTx(&geth_types.DepositTx{}),
+			SignerAddress: signer,
+		}
+	}
+
+	knownBatcher := common.HexToAddress("0x0000000000000000000000000000000000000001")
+	unknownSigner := common.HexToAddress("0x000000000000000000000000000000000000dead")
+	futureEpoch := uint64(9999999)
+	historicalEpoch := uint64(50)
+
+	t.Run("espressoBatcher zero: unknown signer with future origin is BatchUndecided not BatchDrop", func(t *testing.T) {
+		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		streamer.FinalizedL1 = createL1BlockRef(100)
+
+		batch := makeBatch(futureEpoch, unknownSigner)
+		require.Equal(t, BatchValidity(BatchUndecided), streamer.CheckBatch(ctx, batch))
+	})
+
+	t.Run("espressoBatcher set: unknown signer with future origin is BatchDrop", func(t *testing.T) {
+		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		streamer.FinalizedL1 = createL1BlockRef(100)
+		streamer.espressoBatcher = knownBatcher
+
+		batch := makeBatch(futureEpoch, unknownSigner)
+		require.Equal(t, BatchValidity(BatchDrop), streamer.CheckBatch(ctx, batch))
+	})
+
+	t.Run("espressoBatcher set: known signer with future origin passes the pre-filter", func(t *testing.T) {
+		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		streamer.FinalizedL1 = createL1BlockRef(100)
+		streamer.espressoBatcher = knownBatcher
+
+		batch := makeBatch(futureEpoch, knownBatcher)
+		require.Equal(t, BatchValidity(BatchUndecided), streamer.CheckBatch(ctx, batch))
+	})
+
+	t.Run("historical batch: unknown signer bypasses pre-filter but fails post-buffer check", func(t *testing.T) {
+		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		streamer.FinalizedL1 = createL1BlockRef(100)
+		streamer.espressoBatcher = knownBatcher
+
+		batch := makeBatch(historicalEpoch, unknownSigner)
+		require.Equal(t, BatchValidity(BatchDrop), streamer.CheckBatch(ctx, batch))
+	})
+
+	t.Run("historical batch: known signer bypasses pre-filter and is accepted", func(t *testing.T) {
+		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		streamer.FinalizedL1 = createL1BlockRef(100)
+		streamer.espressoBatcher = knownBatcher
+
+		batch := makeBatch(historicalEpoch, knownBatcher)
+		require.Equal(t, BatchValidity(BatchAccept), streamer.CheckBatch(ctx, batch))
+	})
+
+	t.Run("after Refresh: espressoBatcher is populated from contract and pre-filter works", func(t *testing.T) {
+		state, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		syncStatus := state.SyncStatus()
+
+		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		require.NoError(t, err)
+		require.Equal(t, knownBatcher, streamer.espressoBatcher)
+
+		batch := makeBatch(futureEpoch, unknownSigner)
+		require.Equal(t, BatchValidity(BatchDrop), streamer.CheckBatch(ctx, batch))
+	})
+}
+
 // TestUpdateReturnsErrorOnMaxUint64BlockHeight verifies that Update returns an error
 // when FetchLatestBlockHeight returns math.MaxUint64 (overflow guard).
 func TestUpdateReturnsErrorOnMaxUint64BlockHeight(t *testing.T) {
