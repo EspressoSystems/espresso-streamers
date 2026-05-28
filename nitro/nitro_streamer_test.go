@@ -48,6 +48,7 @@ func TestEspressoStreamer(t *testing.T) {
 		assert.Equal(t, before, streamer.currentMessagePos)
 		assert.Equal(t, len(streamer.messageWithMetadataAndPos), 2)
 	})
+
 	t.Run("Peek+Advance should consume a message if it is in buffer", func(t *testing.T) {
 		mockEspressoClient := new(mockEspressoClient)
 
@@ -96,6 +97,7 @@ func TestEspressoStreamer(t *testing.T) {
 		assert.Nil(t, third)
 		assert.Equal(t, initialPos+2, streamer.currentMessagePos)
 	})
+
 	t.Run("Streamer should not skip any hotshot blocks", func(t *testing.T) {
 		ctx := t.Context()
 
@@ -103,14 +105,14 @@ func TestEspressoStreamer(t *testing.T) {
 
 		namespace := uint64(1)
 
-		mockEspressoClient.On("FetchLatestBlockHeight", ctx).Return(uint64(4), nil).Once()
-		mockEspressoClient.On("FetchNamespaceTransactionsInRange", ctx, uint64(3), uint64(4), namespace).Return([]types.NamespaceTransactionsRangeData{}, nil).Once()
-		mockEspressoClient.On("FetchLatestBlockHeight", ctx).Return(uint64(5), nil).Once()
-		mockEspressoClient.On("FetchNamespaceTransactionsInRange", ctx, uint64(4), uint64(5), namespace).Return([]types.NamespaceTransactionsRangeData{}, nil).Once()
-		mockEspressoClient.On("FetchLatestBlockHeight", ctx).Return(uint64(6), nil).Once()
-		mockEspressoClient.On("FetchNamespaceTransactionsInRange", ctx, uint64(5), uint64(6), namespace).Return([]types.NamespaceTransactionsRangeData{}, nil).Once()
-		mockEspressoClient.On("FetchLatestBlockHeight", ctx).Return(uint64(7), nil).Once()
-		mockEspressoClient.On("FetchNamespaceTransactionsInRange", ctx, uint64(6), uint64(7), namespace).Return([]types.NamespaceTransactionsRangeData{}, errors.New("test error")).Once()
+		mockEspressoClient.mockFetchLatestBlockHeightReturn(4, nil).Once()
+		mockEspressoClient.mockFetchNamespaceTransactionsInRangeReturn(3, 4, namespace, []types.NamespaceTransactionsRangeData{}, nil).Once()
+		mockEspressoClient.mockFetchLatestBlockHeightReturn(5, nil).Once()
+		mockEspressoClient.mockFetchNamespaceTransactionsInRangeReturn(4, 5, namespace, []types.NamespaceTransactionsRangeData{}, nil).Once()
+		mockEspressoClient.mockFetchLatestBlockHeightReturn(6, nil).Once()
+		mockEspressoClient.mockFetchNamespaceTransactionsInRangeReturn(5, 6, namespace, []types.NamespaceTransactionsRangeData{}, nil).Once()
+		mockEspressoClient.mockFetchLatestBlockHeightReturn(7, nil).Once()
+		mockEspressoClient.mockFetchNamespaceTransactionsInRangeReturn(6, 7, namespace, []types.NamespaceTransactionsRangeData{}, errors.New("test error")).Once()
 
 		streamer := NewEspressoStreamer(namespace, 3, mockEspressoClient, nil, 1*time.Second, 0, log.Root())
 
@@ -133,15 +135,15 @@ func TestEspressoStreamer(t *testing.T) {
 		err = streamer.QueueMessagesFromHotshot(ctx, testParseFn)
 		require.Error(t, err)
 		require.Equal(t, streamer.nextHotshotBlockNum, uint64(6))
-
 	})
+
 	t.Run("Streamer should query hotshot after being reset", func(t *testing.T) {
 		ctx := t.Context()
 		mockEspressoClient := new(mockEspressoClient)
 
 		namespace := uint64(1)
-		mockEspressoClient.On("FetchLatestBlockHeight", ctx).Return(uint64(4), nil).Once()
-		mockEspressoClient.On("FetchNamespaceTransactionsInRange", ctx, uint64(3), uint64(4), namespace).Return([]types.NamespaceTransactionsRangeData{
+		mockEspressoClient.mockFetchLatestBlockHeightReturn(4, nil).Once()
+		mockEspressoClient.mockFetchNamespaceTransactionsInRangeReturn(3, 4, namespace, []types.NamespaceTransactionsRangeData{
 			{
 				Transactions: []types.Transaction{
 					{
@@ -152,8 +154,8 @@ func TestEspressoStreamer(t *testing.T) {
 			},
 		}, nil).Once()
 
-		mockEspressoClient.On("FetchLatestBlockHeight", ctx).Return(uint64(5), nil).Once()
-		mockEspressoClient.On("FetchNamespaceTransactionsInRange", ctx, uint64(4), uint64(5), namespace).Return([]types.NamespaceTransactionsRangeData{
+		mockEspressoClient.mockFetchLatestBlockHeightReturn(5, nil).Once()
+		mockEspressoClient.mockFetchNamespaceTransactionsInRangeReturn(4, 5, namespace, []types.NamespaceTransactionsRangeData{
 			{
 				Transactions: []types.Transaction{
 					{
@@ -167,7 +169,6 @@ func TestEspressoStreamer(t *testing.T) {
 		streamer := NewEspressoStreamer(namespace, 3, mockEspressoClient, nil, 1*time.Second, 0, log.Root())
 
 		testParseFn := func(pos uint64, hotshotheight uint64) func(tx types.Bytes, _ uint64) error {
-
 			return func(tx types.Bytes, _ uint64) error {
 				msg := &MessageWithMetadataAndPos{
 					MessageWithMeta: MessageWithMetadata{
@@ -194,8 +195,8 @@ func TestEspressoStreamer(t *testing.T) {
 		require.Equal(t, 0, len(streamer.messageWithMetadataAndPos))
 
 		// Add new mocks for the next fetch after reset
-		mockEspressoClient.On("FetchLatestBlockHeight", ctx).Return(uint64(4), nil).Once()
-		mockEspressoClient.On("FetchNamespaceTransactionsInRange", ctx, uint64(3), uint64(4), namespace).Return([]types.NamespaceTransactionsRangeData{
+		mockEspressoClient.mockFetchLatestBlockHeightReturn(4, nil).Once()
+		mockEspressoClient.mockFetchNamespaceTransactionsInRangeReturn(3, 4, namespace, []types.NamespaceTransactionsRangeData{
 			{
 				Transactions: []types.Transaction{
 					{
@@ -218,10 +219,10 @@ func TestEspressoStreamer(t *testing.T) {
 		namespace := uint64(1)
 		blockNum := uint64(3)
 
-		mockEspressoClient.On("FetchLatestBlockHeight", ctx).Return(blockNum+1, nil).Once()
+		mockEspressoClient.mockFetchLatestBlockHeightReturn(blockNum+1, nil).Once()
 
 		tx1, tx2, tx3 := types.Bytes{0x01}, types.Bytes{0x02}, types.Bytes{0x03}
-		mockEspressoClient.On("FetchNamespaceTransactionsInRange", ctx, blockNum, blockNum+1, namespace).Return([]types.NamespaceTransactionsRangeData{
+		mockEspressoClient.mockFetchNamespaceTransactionsInRangeReturn(blockNum, blockNum+1, namespace, []types.NamespaceTransactionsRangeData{
 			{
 				Transactions: []types.Transaction{
 					{
@@ -323,14 +324,6 @@ func TestEspressoStreamer(t *testing.T) {
 	})
 }
 
-// This serves to assert that we should be expecting a specific error during the test, and if the error does not match, fail the test.
-func ExpectErr(t *testing.T, err error, expectedError error) {
-	t.Helper()
-	if !errors.Is(err, expectedError) {
-		t.Fatalf("expected error %v, got %v", expectedError, err)
-	}
-}
-
 // This test ensures that parseEspressoTransaction will have
 func TestEspressoEmptyTransaction(t *testing.T) {
 	mockEspressoClient := new(mockEspressoClient)
@@ -348,11 +341,37 @@ func TestEspressoEmptyTransaction(t *testing.T) {
 	}
 	signedPayload, _ := SignHotShotPayload(payload, signerFunc)
 	err := streamer.parseEspressoTransaction(signedPayload, 0)
-	ExpectErr(t, err, ErrPayloadHadNoMessages)
+	require.ErrorIs(t, err, ErrPayloadHadNoMessages)
 }
 
 type mockEspressoClient struct {
 	mock.Mock
+}
+
+func (m *mockEspressoClient) mockFetchLatestBlockHeight() *mock.Call {
+	return m.On("FetchLatestBlockHeight", mock.Anything)
+}
+
+// nolint
+func (m *mockEspressoClient) mockFetchHeaderByHeight(blockHeight uint64) *mock.Call {
+	return m.On("FetchHeaderByHeight", mock.Anything, blockHeight)
+}
+
+func (m *mockEspressoClient) mockFetchNamespaceTransactionsInRange(fromHeight, toHeight, namespace uint64) *mock.Call {
+	return m.On("FetchNamespaceTransactionsInRange", mock.Anything, fromHeight, toHeight, namespace)
+}
+
+func (m *mockEspressoClient) mockFetchLatestBlockHeightReturn(blockHeight uint64, err error) *mock.Call {
+	return m.mockFetchLatestBlockHeight().Return(blockHeight, err)
+}
+
+// nolint
+func (m *mockEspressoClient) mockFetchHeaderByHeightReturn(blockHeight uint64, header types.HeaderImpl, err error) *mock.Call {
+	return m.mockFetchHeaderByHeight(blockHeight).Return(header, err)
+}
+
+func (m *mockEspressoClient) mockFetchNamespaceTransactionsInRangeReturn(fromHeight, toHeight, namespace uint64, transactions []types.NamespaceTransactionsRangeData, err error) *mock.Call {
+	return m.mockFetchNamespaceTransactionsInRange(fromHeight, toHeight, namespace).Return(transactions, err).Once()
 }
 
 func (m *mockEspressoClient) FetchLatestBlockHeight(ctx context.Context) (uint64, error) {

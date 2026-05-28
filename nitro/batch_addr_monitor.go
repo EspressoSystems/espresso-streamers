@@ -38,6 +38,14 @@ func NewBatcherAddressMonitor(addressValidRanges []AddressValidRangeConfig) *Bat
 	}
 }
 
+// AddressValidator defines an interface for verifying if a given address is
+// valid at a specific L1 block height.
+type AddressValidator interface {
+	// IsValid determines whether a given Address is a valid signer for data
+	// with a corresponding L1 Block Height.
+	IsValid(address common.Address, l1Height uint64) bool
+}
+
 func (b *BatcherAddrMonitor) IsValid(batcherAddress common.Address, l1Height uint64) bool {
 	for _, addr := range b.addressValidRanges {
 		if addr.isValidAt(batcherAddress, l1Height) {
