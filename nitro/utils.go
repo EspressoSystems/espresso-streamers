@@ -3,6 +3,7 @@ package nitro
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -382,6 +383,14 @@ type SignatureVerifierAndMessageIterable interface {
 // string "V1", which should match the Version 1 encoding.
 var version1HeaderPeek = []byte{0, 0, 0, 0, 0, 0, 0, 4, '"', 'V', '1', '"'}
 
+// version0Peek contains a Big endian signature size, which should be 65
+// bytes.
+var version0Peek = []byte{0, 0, 0, 0, 0, 0, 0, 65}
+
+// ErrUnknownMessageFormat is an error that indicates that the message
+// format of the incoming data does not match any known version.
+var ErrUnknownMessageFormat = errors.New("unknown nitro message format")
+
 // ParseNitroMessagesFromHotShot takes in a byte array and attempts to parse
 // it into something that allows for the message's signature to verified, and
 // for the messages contained within to be iterated over.
@@ -397,11 +406,16 @@ func ParseNitroMessagesFromHotShot(payload []byte) (SignatureVerifierAndMessageI
 		return v1Msg, nil
 	}
 
-	// Fall back on Version 0
-	var v0Msg V0SignatureAndMessages
-	if err := v0Msg.UnmarshalBinary(payload); err != nil {
-		return nil, err
+	if bytes.HasPrefix(payload, version0Peek) {
+		// Fall back on Version 0
+		var v0Msg V0SignatureAndMessages
+		if err := v0Msg.UnmarshalBinary(payload); err != nil {
+			return nil, err
+		}
+
+		return v0Msg, nil
 	}
 
-	return v0Msg, nil
+	return nil, ErrUnknownMessageFormat
+
 }
