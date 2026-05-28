@@ -352,6 +352,7 @@ func (m *mockEspressoClient) mockFetchLatestBlockHeight() *mock.Call {
 	return m.On("FetchLatestBlockHeight", mock.Anything)
 }
 
+// nolint
 func (m *mockEspressoClient) mockFetchHeaderByHeight(blockHeight uint64) *mock.Call {
 	return m.On("FetchHeaderByHeight", mock.Anything, blockHeight)
 }
@@ -364,6 +365,7 @@ func (m *mockEspressoClient) mockFetchLatestBlockHeightReturn(blockHeight uint64
 	return m.mockFetchLatestBlockHeight().Return(blockHeight, err)
 }
 
+// nolint
 func (m *mockEspressoClient) mockFetchHeaderByHeightReturn(blockHeight uint64, header types.HeaderImpl, err error) *mock.Call {
 	return m.mockFetchHeaderByHeight(blockHeight).Return(header, err)
 }
