@@ -7,7 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// ErrEncodedByteLengthMisMatch is an error type indicating that there was a
+// ErrEncodedByteLengthMisMatch is an error type indicating that there was
 // a mismatch between the length of the actual encoded bytes, and the length
 // that was expected.
 type ErrEncodedByteLengthMisMatch struct {
@@ -207,11 +207,11 @@ func parseV0MessageAndIndex(data []byte) (result V0MessageAndIndex, bytesRead ui
 	if messageLength == 0 {
 		// NOTE: I would consider this to be an invalid state. How can we have
 		// an "index" for position that indicates that we have a message to
-		// be serialized, but then haveno message contents. That seems like
+		// be serialized, but then have no message contents. That seems like
 		// a contradiction. In either case we'd ultimately probably end up
 		// ignoring the contents of this message.
 		// That being said, I will account for this in order to facilitate
-		// compatability with the previous implementation.
+		// compatibility with the previous implementation.
 		return result, offset, ErrNoMessageData
 	}
 

@@ -6,8 +6,8 @@ import (
 	"fmt"
 )
 
-// ErrNotEnoughBytesRemaining is an error that indicates that the version
-// parsed did not match the expected value.
+// ErrVersionMismatch is an error that indicates that the version parsed did
+// not match the expected value.
 type ErrVersionMismatch struct {
 	Have, Want string
 }
@@ -21,7 +21,7 @@ func (e ErrVersionMismatch) Error() string {
 // JSON value.  The way this works in practice, is that we will just
 // prefix the JSON string representation (as bytes) with the length
 // of the JSON String representation so the full width can be
-// determined without issue or abiguity. (Not that there would be any)
+// determined without issue or ambiguity. (Not that there would be any)
 //
 //	 0                   1                   2                   3
 //	 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1

@@ -129,7 +129,7 @@ func (e ErrBroadcastFeeMessageMissingL1IncomingMessage) Error() string {
 }
 
 // ErrBroadcastFeeMessageMissingL1IncomingMessageHeader is a class of error
-// that indicates the the L1IncomingMessageHeader was null on a
+// that indicates the L1IncomingMessageHeader was null on a
 // BroadcastFeedMessage
 type ErrBroadcastFeeMessageMissingL1IncomingMessageHeader struct {
 	Message BroadcastFeedMessage
@@ -147,13 +147,13 @@ type ErrHashLengthMismatch struct {
 	Have, Want uint64
 }
 
-// Erorr implements error
+// Error implements error
 func (e ErrHashLengthMismatch) Error() string {
 	return fmt.Sprintf("hash written length did not match expected value, have: %d, want: %d", e.Have, e.Want)
 }
 
 // ComputeBroadcastFeedMessageHash computes the hash of a BroadcastFeedMessage.
-// This code is taken from the signature_hash found in the cas library.
+// This code is taken from the signature_hash found in the CAS library.
 // Code referenced here:
 // https://github.com/EspressoSystems/chain-adjacent-service/blob/a0404112bdc52f6d02e200c761a0854ec3398a65/src/rollups/nitro/nitro.rs#L446-L481
 //
@@ -219,7 +219,7 @@ func ComputeBroadcastFeedMessageHash(message BroadcastFeedMessage, chainID uint6
 	return result, nil
 }
 
-// SignatureVerifier is an interface that represents the ability to verify a
+// SignatureVerifier is an interface that represents the ability to verify
 // a signature for a given validator, chainID, and l1Height.
 type SignatureVerifier interface {
 	// VerifySignature verifies that the signature on the message is valid for
@@ -239,7 +239,7 @@ func (e ErrSigningAddressIsNotValidForL1Height) Error() string {
 	return fmt.Sprintf("singing address, %s, is not valid for l1 height %d", e.Address, e.L1Height)
 }
 
-// VerifySignature implements SiangatureVerifier
+// VerifySignature implements SignatureVerifier
 func (m V0SignatureAndMessages) VerifySignature(validator AddressValidator, chainID, l1Height uint64) error {
 	// Recover the Signing Public Key
 	publicKey, err := crypto.SigToPub(m.Hash[:], m.Signature)
@@ -320,7 +320,7 @@ type MessageWithPositionIterator interface {
 
 // v0MessageIterator is an iterator for the V0SignatureAndMessages type.
 // It is able to iterate through all of the messages contained within a single
-// mssage.
+// message.
 type v0MessageIterator struct {
 	message  V0SignatureAndMessages
 	position uint64
@@ -378,14 +378,14 @@ type MessageWithPositionIterable interface {
 	MessageIterator() MessageWithPositionIterator
 }
 
-// MessageIterator implements MessageWithPositionIterable
+// MessageIterator implements MessageWithPositionIterator
 func (m V0SignatureAndMessages) MessageIterator() MessageWithPositionIterator {
 	return &v0MessageIterator{
 		message: m,
 	}
 }
 
-// MessageIterator implements MessageWithPositionIterable
+// MessageIterator implements MessageWithPositionIterator
 func (m V1HeaderAndBroadcastFeedMessages) MessageIterator() MessageWithPositionIterator {
 	return &v1MessageIterator{
 		message: m,

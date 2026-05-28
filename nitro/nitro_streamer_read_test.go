@@ -61,7 +61,7 @@ func EncodeIntoNitroV0Format(t *testing.T, signerKey *ecdsa.PrivateKey, l2Messag
 		})
 	}
 
-	// Randomize the message order, just to deomonstrate resilience
+	// Randomize the message order, just to demonstrate resilience
 	rand.Shuffle(len(l2Messages), func(i, j int) {
 		v0Messages[i], v0Messages[j] = v0Messages[j], v0Messages[i]
 	})
@@ -92,7 +92,7 @@ func EncodeIntoNitroV1Format(t *testing.T, l2Messages []BroadcastFeedMessage) ([
 	var messages V1HeaderAndBroadcastFeedMessages
 	l2MessagesCopy := make([]BroadcastFeedMessage, len(l2Messages))
 	copy(l2MessagesCopy, l2Messages)
-	// Randomize the message order, just to deomonstrate resilience
+	// Randomize the message order, just to demonstrate resilience
 	rand.Shuffle(len(l2Messages), func(i, j int) {
 		l2MessagesCopy[i], l2MessagesCopy[j] = l2MessagesCopy[j], l2MessagesCopy[i]
 	})
