@@ -248,8 +248,6 @@ func (s *EspressoStreamer) parseEspressoTransaction(tx espressoTypes.Bytes, l1He
 	}
 
 	// Let's verify the payload signature
-	// NOTE: this assumes that the namespace **IS** the Chain ID.  If this is
-	// not, then we'll need to introduce a breaking change that determines
 	if err := message.VerifySignature(s.monitor, s.ChainID(), l1Height); err != nil {
 		s.log.Warn("failed to verify batch poster signature", "err", err)
 		return fmt.Errorf("failed to verify batch poster signature: %w", err)
