@@ -417,5 +417,19 @@ func ParseNitroMessagesFromHotShot(payload []byte) (SignatureVerifierAndMessageI
 	}
 
 	return nil, ErrUnknownMessageFormat
+}
 
+// integer is a type constraint that represents all of the integer types in Go.
+type integer interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
+}
+
+// CanSafelyReadElements is a utility function that checks if a read of
+// length of a desired read fits within the remaining space of the length
+// of a slice given the current offset.
+func CanSafelyReadElements[T integer](totalSpaceAvailable, readPosition, elementsToRead T) bool {
+	// This check is an integer overflow safe way to check if we can fit the
+	// `elementsToRead` within the remaining length of the `totalSpaceAvailable`
+	// from the position of `readPosition`.
+	return elementsToRead > totalSpaceAvailable-readPosition
 }

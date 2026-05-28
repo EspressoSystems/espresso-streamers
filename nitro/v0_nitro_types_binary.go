@@ -192,7 +192,7 @@ func parseV0MessageAndIndex(data []byte) (result V0MessageAndIndex, bytesRead ui
 	offset := uint64(0)
 
 	// Extract the index
-	if INDEX_SIZE+LEN_SIZE > length-offset {
+	if CanSafelyReadElements(length, offset, INDEX_SIZE+LEN_SIZE) {
 		return result, offset, fmt.Errorf(
 			"not enough bytes for index and length in V0MessageandIndex: %w",
 			ErrNotEnoughBytesRemaining{Have: length, Want: offset + INDEX_SIZE + LEN_SIZE},
@@ -215,7 +215,7 @@ func parseV0MessageAndIndex(data []byte) (result V0MessageAndIndex, bytesRead ui
 		return result, offset, ErrNoMessageData
 	}
 
-	if messageLength > length-offset {
+	if CanSafelyReadElements(length, offset, messageLength) {
 		return result, offset, fmt.Errorf(
 			"not enough bytes to hold message for V0MessageAndInex: %w",
 			ErrNotEnoughBytesRemaining{Have: length, Want: offset + messageLength},
@@ -319,7 +319,7 @@ func parseV0SignatureAndMessages(data []byte) (result V0SignatureAndMessages, by
 	length := uint64(len(data))
 	offset := uint64(0)
 
-	if LEN_SIZE > length-offset {
+	if CanSafelyReadElements(length, offset, LEN_SIZE) {
 		return result, offset, fmt.Errorf(
 			"payload is too short for signature: %w",
 			ErrNotEnoughBytesRemaining{Have: length, Want: offset + LEN_SIZE},
@@ -330,7 +330,7 @@ func parseV0SignatureAndMessages(data []byte) (result V0SignatureAndMessages, by
 	signatureLength := binary.BigEndian.Uint64(data[offset : offset+LEN_SIZE])
 	offset += LEN_SIZE
 
-	if signatureLength > length-offset {
+	if CanSafelyReadElements(length, offset, signatureLength) {
 		return result, offset, fmt.Errorf(
 			"payload is too short for signature: %w",
 			ErrNotEnoughBytesRemaining{Have: length, Want: offset + signatureLength},
