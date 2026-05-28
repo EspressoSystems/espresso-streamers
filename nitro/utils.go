@@ -258,29 +258,50 @@ func (m V0SignatureAndMessages) VerifySignature(validator AddressValidator, chai
 	return nil
 }
 
-// VerifySignature implements SignatureVerifier
-func (m V1HeaderAndBroadcastFeedMessages) VerifySignature(validator AddressValidator, chainID, l1Height uint64) error {
-	// We need to validate each message individually
-	for i, msg := range m.Messages {
-		signature := msg.Signature
-		hash, err := ComputeBroadcastFeedMessageHash(msg, chainID)
-		if err != nil {
-			return fmt.Errorf("failed to compute hash for msg: %d (index %d): %w", msg.SequenceNumber, i, err)
-		}
-
-		publicKey, err := crypto.SigToPub(hash[:], signature)
-		if err != nil {
-			return fmt.Errorf("failed to determine public key for signature for V1 message: %w", err)
-		}
-
-		// Determine the Address for the Signing Key
-		address := crypto.PubkeyToAddress(*publicKey)
-
-		// verify that the address is valid for the provided l1 height
-		if !validator.IsValid(address, l1Height) {
-			return ErrSigningAddressIsNotValidForL1Height{Address: address, L1Height: l1Height}
-		}
+// verifyV1Message verifies the signature on a single BroadcastFeedMessage
+// for the V1 format.  This will return an error when things fail that
+// can then be actioned upon.
+func verifyV1Message(validator AddressValidator, chainID, l1Height uint64, msg BroadcastFeedMessage) error {
+	signature := msg.Signature
+	hash, err := ComputeBroadcastFeedMessageHash(msg, chainID)
+	if err != nil {
+		return fmt.Errorf("failed to compute hash for msg: %d: %w", msg.SequenceNumber, err)
 	}
+
+	publicKey, err := crypto.SigToPub(hash[:], signature)
+	if err != nil {
+		return fmt.Errorf("failed to determine public key for signature for V1 message: %w", err)
+	}
+
+	// Determine the Address for the Signing Key
+	address := crypto.PubkeyToAddress(*publicKey)
+
+	// verify that the address is valid for the provided l1 height
+	if !validator.IsValid(address, l1Height) {
+		return ErrSigningAddressIsNotValidForL1Height{Address: address, L1Height: l1Height}
+	}
+
+	return nil
+}
+
+// VerifySignature implements SignatureVerifier
+//
+// NOTE: This will mutate V1HeaderAndBroadcastFeedMessages by filtering out
+// messages with invalid signatures.  This is done to avoid the need to
+// verify signatures multiple times, as the messages with invalid signatures
+// will be dropped and not iterated over.
+func (m *V1HeaderAndBroadcastFeedMessages) VerifySignature(validator AddressValidator, chainID, l1Height uint64) error {
+	// We need to validate each message individually
+	messages := make([]BroadcastFeedMessage, 0, len(m.Messages))
+	for i, msg := range m.Messages {
+		if err := verifyV1Message(validator, chainID, l1Height, msg); err != nil {
+			log.Warn("dropping V1 message", "index", i, "err", err)
+			continue
+		}
+
+		messages = append(messages, msg)
+	}
+	m.Messages = messages
 
 	return nil
 }
@@ -403,7 +424,7 @@ func ParseNitroMessagesFromHotShot(payload []byte) (SignatureVerifierAndMessageI
 			return nil, err
 		}
 
-		return v1Msg, nil
+		return &v1Msg, nil
 	}
 
 	if bytes.HasPrefix(payload, version0Peek) {
