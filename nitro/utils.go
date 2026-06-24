@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -152,10 +153,14 @@ func (e ErrHashLengthMismatch) Error() string {
 	return fmt.Sprintf("hash written length did not match expected value, have: %d, want: %d", e.Have, e.Want)
 }
 
-// ComputeBroadcastFeedMessageHash computes the hash of a BroadcastFeedMessage.
+// ComputeBroadcastFeedMessageHashV2 computes the sequencer feed-message
+// signature hash used by Nitro v3.10 (the "signatureV2" feeds). It hashes the
+// header fields individually and folds in blockHash/blockMetadata, with chainID
+// before seqNum. This mirrors BroadcastFeedMessage.SignatureHash upstream.
 // This code is taken from the signature_hash found in the CAS library.
 // Code referenced here:
 // https://github.com/EspressoSystems/chain-adjacent-service/blob/a0404112bdc52f6d02e200c761a0854ec3398a65/src/rollups/nitro/nitro.rs#L446-L481
+// https://github.com/OffchainLabs/nitro/blob/b1cf6db81afbc1f67c898ac9add5d37391ebd87b/broadcaster/message/message.go#L64-L90
 //
 // We check for errors where they occur, but we don't need to perform error
 // checking where they will not occur.  Specifically when dealing with the
@@ -163,7 +168,7 @@ func (e ErrHashLengthMismatch) Error() string {
 // the lint rule for error checking for this function.
 //
 // nolint:errcheck
-func ComputeBroadcastFeedMessageHash(message BroadcastFeedMessage, chainID uint64) (result common.Hash, err error) {
+func ComputeBroadcastFeedMessageHashV2(message BroadcastFeedMessage, chainID uint64) (result common.Hash, err error) {
 	// Sanity checks
 	if message.Message.Message == nil {
 		return result, ErrBroadcastFeeMessageMissingL1IncomingMessage{Message: message, ChainID: chainID}
@@ -190,8 +195,8 @@ func ComputeBroadcastFeedMessageHash(message BroadcastFeedMessage, chainID uint6
 	io.WriteString(hasher, "Arbitrum Nitro Feed:")
 	binary.Write(hasher, binary.BigEndian, chainID)
 	binary.Write(hasher, binary.BigEndian, message.SequenceNumber)
-	if hash := message.BlockHash; len(hash) > 0 {
-		hasher.Write(hash[:])
+	if message.BlockHash != nil {
+		hasher.Write(message.BlockHash[:])
 	}
 	hasher.Write(message.BlockMetadata)
 	binary.Write(hasher, binary.BigEndian, message.Message.DelayedMessagesRead)
@@ -258,12 +263,59 @@ func (m V0SignatureAndMessages) VerifySignature(validator AddressValidator, chai
 	return nil
 }
 
-// verifyV1Message verifies the signature on a single BroadcastFeedMessage
-// for the V1 format.  This will return an error when things fail that
-// can then be actioned upon.
+// ComputeBroadcastFeedMessageHash computes the sequencer feed-message
+// signature hash used by Nitro v3.9.9 (the "signature" feeds), mirroring
+// MessageWithMetadata.Hash upstream:
+//
+//	keccak256("Arbitrum Nitro Feed:" || seqNum(8 BE) || chainID(8 BE) ||
+//	          delayedMessagesRead(8 BE) || rlp(L1IncomingMessage))
+//
+// Unlike the v3.10 hash (ComputeBroadcastFeedMessageHashV2) this does not hash
+// blockHash/blockMetadata or the header fields individually; it RLP-encodes the
+// whole L1IncomingMessage. The field order also differs (seqNum before chainID).
+// Code referenced here:
+// https://github.com/OffchainLabs/nitro/blob/6b0af88157fe6b8cac37278e8bd8d2aa3677bb11/arbos/arbostypes/messagewithmeta.go#L38-L50
+//
+// nolint:errcheck
+func ComputeBroadcastFeedMessageHash(message BroadcastFeedMessage, chainID uint64) (result common.Hash, err error) {
+	if message.Message.Message == nil {
+		return result, ErrBroadcastFeeMessageMissingL1IncomingMessage{Message: message, ChainID: chainID}
+	}
+	l1Msg := message.Message.Message
+	if l1Msg.Header == nil {
+		return result, ErrBroadcastFeeMessageMissingL1IncomingMessageHeader{Message: message, ChainID: chainID}
+	}
+
+	encodedMessage, err := rlp.EncodeToBytes(l1Msg)
+	if err != nil {
+		return result, fmt.Errorf("failed to RLP-encode L1IncomingMessage for msg %d: %w", message.SequenceNumber, err)
+	}
+
+	hasher := crypto.NewKeccakState()
+	io.WriteString(hasher, "Arbitrum Nitro Feed:")
+	binary.Write(hasher, binary.BigEndian, message.SequenceNumber)
+	binary.Write(hasher, binary.BigEndian, chainID)
+	binary.Write(hasher, binary.BigEndian, message.Message.DelayedMessagesRead)
+	hasher.Write(encodedMessage)
+
+	hash := hasher.Sum(nil)
+	if have, want := uint64(copy(result[:], hash)), uint64(common.HashLength); have != want {
+		return result, ErrHashLengthMismatch{Have: have, Want: want}
+	}
+
+	return result, nil
+}
+
+// verifyV1Message verifies the signature on a single BroadcastFeedMessage for
+// the V1 format. It selects the signature and the matching version's hasher via
+// SequencerSignatureAndHasher, recovers the signer, and checks it against the
+// validator for the given l1Height. It returns an error when verification fails.
 func verifyV1Message(validator AddressValidator, chainID, l1Height uint64, msg BroadcastFeedMessage) error {
-	signature := msg.Signature
-	hash, err := ComputeBroadcastFeedMessageHash(msg, chainID)
+	signature, computeHashFunc := msg.SequencerSignatureAndHasher()
+	if len(signature) == 0 {
+		return fmt.Errorf("%w for msg: %d", ErrMissingSequencerSignature, msg.SequenceNumber)
+	}
+	hash, err := computeHashFunc(msg, chainID)
 	if err != nil {
 		return fmt.Errorf("failed to compute hash for msg: %d: %w", msg.SequenceNumber, err)
 	}
@@ -411,6 +463,11 @@ var version0Peek = []byte{0, 0, 0, 0, 0, 0, 0, 65}
 // ErrUnknownMessageFormat is an error that indicates that the message
 // format of the incoming data does not match any known version.
 var ErrUnknownMessageFormat = errors.New("unknown nitro message format")
+
+// ErrMissingSequencerSignature is an error that indicates that a
+// BroadcastFeedMessage carried neither a "signature" (v3.9.9) nor a
+// "signatureV2" (v3.10) value, so the signer cannot be recovered.
+var ErrMissingSequencerSignature = errors.New("sequencer signature must be set")
 
 // ParseNitroMessagesFromHotShot takes in a byte array and attempts to parse
 // it into something that allows for the message's signature to verified, and

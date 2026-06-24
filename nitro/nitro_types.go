@@ -77,10 +77,20 @@ const V1Header = "V1"
 type BroadcastFeedMessage struct {
 	SequenceNumber       uint64              `json:"sequenceNumber"`
 	Message              MessageWithMetadata `json:"message"`
-	Signature            []byte              `json:"signature"`
+	Signature            []byte              `json:"signature.omitempty"`
+	SignatureV2          []byte              `json:"signatureV2,omitempty"`
 	BlockMetadata        []byte              `json:"blockMetadata,omitempty"`
 	CumulativeSumMsgSize uint64              `json:"-"`
-	BlockHash            []byte              `json:"blockHash,omitempty"`
+	BlockHash            *common.Hash        `json:"blockHash,omitempty"`
+}
+
+// SequencerSignatureAndHasher returns the sequencer feed-message signature
+// along with the hasher that produced the signed hash
+func (m BroadcastFeedMessage) SequencerSignatureAndHasher() ([]byte, func(message BroadcastFeedMessage, chainID uint64) (result common.Hash, err error)) {
+	if len(m.Signature) > 0 {
+		return m.Signature, ComputeBroadcastFeedMessageHash
+	}
+	return m.SignatureV2, ComputeBroadcastFeedMessageHashV2
 }
 
 // V1HeaderAndBroadcastFeedMessages represents the format of the messages that
