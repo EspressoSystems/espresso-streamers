@@ -10,9 +10,7 @@ import (
 	espressoTypes "github.com/EspressoSystems/espresso-network/sdks/go/types"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const HOTSHOT_RANGE_LIMIT = 100
@@ -200,20 +198,6 @@ func (s *EspressoStreamer) QueueMessagesFromHotshot(
 	return nil
 }
 
-func (s *EspressoStreamer) verifyBatchPosterSignature(signature []byte, userDataHash [32]byte, l1Height uint64) error {
-	publicKey, err := crypto.SigToPub(userDataHash[:], signature)
-	if err != nil {
-		return fmt.Errorf("failed to convert signature to public key: %w", err)
-	}
-	addr := crypto.PubkeyToAddress(*publicKey)
-	valid := s.monitor.IsValid(addr, l1Height)
-	if !valid {
-		s.log.Error("address not valid", "addr", addr)
-		return fmt.Errorf("address not valid: %v", addr)
-	}
-	return nil
-}
-
 func (s *EspressoStreamer) GetCurrentEarliestHotShotBlockNumber(pos uint64) uint64 {
 	s.messageLock.RLock()
 	defer s.messageLock.RUnlock()
@@ -235,51 +219,59 @@ func (s *EspressoStreamer) GetCurrentEarliestHotShotBlockNumber(pos uint64) uint
 	return minHeight
 }
 
+// ChainID returns the expected ChainID for the Chain.
+//
+// This method serves a couple of purposes.
+//
+// First is codefies the assumption that the `namespace` is the `ChainID`. If
+// this assumption is incorrect, then this method will need to be modified.
+//
+// Second, it allows for a clean modification of the `ChainID` implementation
+// without needing to modify downstream dependencies if it ever does change.
+func (s *EspressoStreamer) ChainID() uint64 {
+	return s.namespace
+}
+
 func (s *EspressoStreamer) parseEspressoTransaction(tx espressoTypes.Bytes, l1Height uint64) error {
-	signature, userDataHash, indices, messages, err := ParseHotShotPayload(tx)
+	message, err := ParseNitroMessagesFromHotShot(tx)
 	if err != nil {
 		s.log.Warn("failed to parse hotshot payload", "err", err)
-		return err
-	}
-	if len(messages) == 0 {
-		return ErrPayloadHadNoMessages
-	}
-	if len(userDataHash) != 32 {
-		s.log.Warn("user data hash is not 32 bytes")
-		return ErrUserDataHashNot32Bytes
+		return fmt.Errorf("failed to parse hotshot payload: %w", err)
 	}
 
-	userDataHashArr := [32]byte(userDataHash)
+	// Testing for no messages
+	{
+		it := message.MessageIterator()
+		if _, ok := it.NextMessage(0); !ok {
+			return ErrPayloadHadNoMessages
+		}
+	}
 
-	err = s.verifyBatchPosterSignature(signature, userDataHashArr, l1Height)
-	if err != nil {
+	// Let's verify the payload signature
+	if err := message.VerifySignature(s.monitor, s.ChainID(), l1Height); err != nil {
 		s.log.Warn("failed to verify batch poster signature", "err", err)
-		return err
+		return fmt.Errorf("failed to verify batch poster signature: %w", err)
 	}
+
+	iterator := message.MessageIterator()
 
 	s.messageLock.Lock()
 	defer s.messageLock.Unlock()
-	for i, message := range messages {
-		if indices[i] < s.currentMessagePos {
-			log.Warn("message index is less than current message pos, skipping", "msgPos", indices[i], "currentMessagePos", s.currentMessagePos)
-			continue
-		}
-		if _, exists := s.messageWithMetadataAndPos[indices[i]]; exists {
-			log.Warn("duplicate message position, skipping", "msgPos", indices[i])
-			continue
+
+	for {
+		msg, ok := iterator.NextMessage(s.nextHotshotBlockNum)
+		if !ok {
+			// We're out of messages
+			break
 		}
 
-		var messageWithMetadata MessageWithMetadata
-		err = rlp.DecodeBytes(message, &messageWithMetadata)
-		if err != nil {
-			s.log.Warn("failed to decode message", "err", err)
+		if msg.Pos < s.currentMessagePos {
+			log.Warn("message index is less than current message pos, skipping", "msgPos", msg.Pos, "currentMessagePos", s.currentMessagePos)
 			continue
 		}
-
-		msg := &MessageWithMetadataAndPos{
-			MessageWithMeta: messageWithMetadata,
-			Pos:             indices[i],
-			HotshotHeight:   s.nextHotshotBlockNum,
+		if _, exists := s.messageWithMetadataAndPos[msg.Pos]; exists {
+			log.Warn("duplicate message position, skipping", "msgPos", msg.Pos)
+			continue
 		}
 
 		if msg.Pos > s.highestPos {
@@ -295,9 +287,9 @@ func (s *EspressoStreamer) parseEspressoTransaction(tx espressoTypes.Bytes, l1He
 			}
 		}
 
-		s.messageWithMetadataAndPos[msg.Pos] = msg
+		s.messageWithMetadataAndPos[msg.Pos] = &msg
 
-		s.log.Info("Added message to queue", "message", indices[i])
+		s.log.Debug("Added message to queue", "message", msg.Pos)
 	}
 	return nil
 }
@@ -310,7 +302,6 @@ func fetchNextHotshotBlock(
 	namespace uint64,
 	log log.Logger,
 ) (uint64, error) {
-
 	latestBlockHeight, err := espressoClient.FetchLatestBlockHeight(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %w", ErrFailedToFetchTransactions, err)
