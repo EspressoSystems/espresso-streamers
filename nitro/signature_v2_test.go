@@ -8,10 +8,10 @@ import (
 )
 
 func TestSequencerSignature_ReadsEitherKey(t *testing.T) {
-	require.Equal(t, []byte{1, 2, 3},
-		BroadcastFeedMessage{Signature: []byte{1, 2, 3}}.SequencerSignature())
-	require.Equal(t, []byte{4, 5, 6},
-		BroadcastFeedMessage{SignatureV2: []byte{4, 5, 6}}.SequencerSignature())
+	sig, _ := BroadcastFeedMessage{Signature: []byte{1, 2, 3}}.SequencerSignatureAndHasher()
+	require.Equal(t, []byte{1, 2, 3}, sig)
+	sig, _ = BroadcastFeedMessage{SignatureV2: []byte{4, 5, 6}}.SequencerSignatureAndHasher()
+	require.Equal(t, []byte{4, 5, 6}, sig)
 }
 
 // v3.10 feed messages carry the signature under "signatureV2" (and blockHash as
@@ -24,6 +24,7 @@ func TestBroadcastFeedMessage_DecodesSignatureV2(t *testing.T) {
 	var msg BroadcastFeedMessage
 	require.NoError(t, json.Unmarshal([]byte(raw), &msg))
 	require.Empty(t, msg.Signature, `"signature" should be absent`)
-	require.Len(t, msg.SequencerSignature(), 65, "65-byte ECDSA signature (r||s||v)")
+	sig, _ := msg.SequencerSignatureAndHasher()
+	require.Len(t, sig, 65, "65-byte ECDSA signature (r||s||v)")
 	require.NotNil(t, msg.BlockHash)
 }

@@ -31,24 +31,24 @@ func sampleBroadcastFeedMessage() BroadcastFeedMessage {
 // The v3.9.9 hash must compute (RLP path works), be deterministic, and differ
 // from the v3.10 hash — they use different field orders and v3.9.9 RLP-encodes
 // the whole L1IncomingMessage instead of hashing fields individually.
-func TestV3_9_9Hash_DeterministicAndDistinctFromV3_10(t *testing.T) {
+func TestV1Hash_DeterministicAndDistinctFromV2(t *testing.T) {
 	msg := sampleBroadcastFeedMessage()
 	const chainID = uint64(412346)
 
-	v399a, err := ComputeBroadcastFeedMessageHashLegacy(msg, chainID)
+	v399a, err := ComputeBroadcastFeedMessageHash(msg, chainID)
 	require.NoError(t, err)
-	v399b, err := ComputeBroadcastFeedMessageHashLegacy(msg, chainID)
+	v399b, err := ComputeBroadcastFeedMessageHash(msg, chainID)
 	require.NoError(t, err)
 	require.Equal(t, v399a, v399b, "v3.9.9 hash must be deterministic")
 	require.Len(t, v399a.Bytes(), common.HashLength)
 
-	v310, err := ComputeBroadcastFeedMessageHash(msg, chainID)
+	v310, err := ComputeBroadcastFeedMessageHashV2(msg, chainID)
 	require.NoError(t, err)
 	require.NotEqual(t, v310, v399a, "v3.9.9 and v3.10 hashes must differ")
 }
 
-func TestV3_9_9Hash_RequiresL1IncomingMessage(t *testing.T) {
+func TestV1Signature_Hash_RequiresL1IncomingMessage(t *testing.T) {
 	var msg BroadcastFeedMessage
-	_, err := ComputeBroadcastFeedMessageHashLegacy(msg, 1)
+	_, err := ComputeBroadcastFeedMessageHash(msg, 1)
 	require.Error(t, err)
 }

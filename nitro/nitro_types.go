@@ -84,14 +84,13 @@ type BroadcastFeedMessage struct {
 	BlockHash            *common.Hash        `json:"blockHash,omitempty"`
 }
 
-// SequencerSignature returns the sequencer feed-message signature regardless of
-// which JSON key carried it ("signature" on Nitro v3.9.9, "signatureV2" on
-// v3.10). The signed hash also differs between versions — see verifyV1Message.
-func (m BroadcastFeedMessage) SequencerSignature() []byte {
+// SequencerSignatureAndHasher returns the sequencer feed-message signature
+// along with the hasher that produced the signed hash
+func (m BroadcastFeedMessage) SequencerSignatureAndHasher() ([]byte, func(message BroadcastFeedMessage, chainID uint64) (result common.Hash, err error)) {
 	if len(m.Signature) > 0 {
-		return m.Signature
+		return m.Signature, ComputeBroadcastFeedMessageHash
 	}
-	return m.SignatureV2
+	return m.SignatureV2, ComputeBroadcastFeedMessageHashV2
 }
 
 // V1HeaderAndBroadcastFeedMessages represents the format of the messages that

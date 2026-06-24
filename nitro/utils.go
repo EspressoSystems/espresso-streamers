@@ -153,7 +153,10 @@ func (e ErrHashLengthMismatch) Error() string {
 	return fmt.Sprintf("hash written length did not match expected value, have: %d, want: %d", e.Have, e.Want)
 }
 
-// ComputeBroadcastFeedMessageHash computes the hash of a BroadcastFeedMessage.
+// ComputeBroadcastFeedMessageHashV2 computes the sequencer feed-message
+// signature hash used by Nitro v3.10 (the "signatureV2" feeds). It hashes the
+// header fields individually and folds in blockHash/blockMetadata, with chainID
+// before seqNum. This mirrors BroadcastFeedMessage.SignatureHash upstream.
 // This code is taken from the signature_hash found in the CAS library.
 // Code referenced here:
 // https://github.com/EspressoSystems/chain-adjacent-service/blob/a0404112bdc52f6d02e200c761a0854ec3398a65/src/rollups/nitro/nitro.rs#L446-L481
@@ -165,7 +168,7 @@ func (e ErrHashLengthMismatch) Error() string {
 // the lint rule for error checking for this function.
 //
 // nolint:errcheck
-func ComputeBroadcastFeedMessageHash(message BroadcastFeedMessage, chainID uint64) (result common.Hash, err error) {
+func ComputeBroadcastFeedMessageHashV2(message BroadcastFeedMessage, chainID uint64) (result common.Hash, err error) {
 	// Sanity checks
 	if message.Message.Message == nil {
 		return result, ErrBroadcastFeeMessageMissingL1IncomingMessage{Message: message, ChainID: chainID}
@@ -260,14 +263,21 @@ func (m V0SignatureAndMessages) VerifySignature(validator AddressValidator, chai
 	return nil
 }
 
-// verifyV1Message verifies the signature on a single BroadcastFeedMessage
-// for the V1 format.  This will return an error when things fail that
-// can then be actioned upon.
+// ComputeBroadcastFeedMessageHash computes the sequencer feed-message
+// signature hash used by Nitro v3.9.9 (the "signature" feeds), mirroring
+// MessageWithMetadata.Hash upstream:
+//
+//	keccak256("Arbitrum Nitro Feed:" || seqNum(8 BE) || chainID(8 BE) ||
+//	          delayedMessagesRead(8 BE) || rlp(L1IncomingMessage))
+//
+// Unlike the v3.10 hash (ComputeBroadcastFeedMessageHashV2) this does not hash
+// blockHash/blockMetadata or the header fields individually; it RLP-encodes the
+// whole L1IncomingMessage. The field order also differs (seqNum before chainID).
 // Code referenced here:
 // https://github.com/OffchainLabs/nitro/blob/6b0af88157fe6b8cac37278e8bd8d2aa3677bb11/arbos/arbostypes/messagewithmeta.go#L38-L50
 //
 // nolint:errcheck
-func ComputeBroadcastFeedMessageHashLegacy(message BroadcastFeedMessage, chainID uint64) (result common.Hash, err error) {
+func ComputeBroadcastFeedMessageHash(message BroadcastFeedMessage, chainID uint64) (result common.Hash, err error) {
 	if message.Message.Message == nil {
 		return result, ErrBroadcastFeeMessageMissingL1IncomingMessage{Message: message, ChainID: chainID}
 	}
@@ -296,39 +306,34 @@ func ComputeBroadcastFeedMessageHashLegacy(message BroadcastFeedMessage, chainID
 	return result, nil
 }
 
+// verifyV1Message verifies the signature on a single BroadcastFeedMessage for
+// the V1 format. It selects the signature and the matching version's hasher via
+// SequencerSignatureAndHasher, recovers the signer, and checks it against the
+// validator for the given l1Height. It returns an error when verification fails.
 func verifyV1Message(validator AddressValidator, chainID, l1Height uint64, msg BroadcastFeedMessage) error {
-	// Nitro changed the sequencer feed-message signature hash between protocol
-	// versions from v3.10 on
-	hashers := []func(BroadcastFeedMessage, uint64) (common.Hash, error){
-		ComputeBroadcastFeedMessageHash,       // v3.10
-		ComputeBroadcastFeedMessageHashLegacy, // Pre v3.10
+	signature, computeHashFunc := msg.SequencerSignatureAndHasher()
+	if len(signature) == 0 {
+		return fmt.Errorf("%w for msg: %d", ErrMissingSequencerSignature, msg.SequenceNumber)
+	}
+	hash, err := computeHashFunc(msg, chainID)
+	if err != nil {
+		return fmt.Errorf("failed to compute hash for msg: %d: %w", msg.SequenceNumber, err)
 	}
 
-	// "signature" (pre v3.10) or "signatureV2" (v3.10) — whichever the message has.
-	signature := msg.SequencerSignature()
-
-	var lastErr error
-	for _, computeHash := range hashers {
-		hash, err := computeHash(msg, chainID)
-		if err != nil {
-			lastErr = fmt.Errorf("failed to compute hash for msg %d: %w", msg.SequenceNumber, err)
-			continue
-		}
-
-		publicKey, err := crypto.SigToPub(hash[:], signature)
-		if err != nil {
-			lastErr = fmt.Errorf("failed to determine public key for V1 message %d: %w", msg.SequenceNumber, err)
-			continue
-		}
-
-		address := crypto.PubkeyToAddress(*publicKey)
-		if validator.IsValid(address, l1Height) {
-			return nil
-		}
-		lastErr = ErrSigningAddressIsNotValidForL1Height{Address: address, L1Height: l1Height}
+	publicKey, err := crypto.SigToPub(hash[:], signature)
+	if err != nil {
+		return fmt.Errorf("failed to determine public key for signature for V1 message: %w", err)
 	}
 
-	return lastErr
+	// Determine the Address for the Signing Key
+	address := crypto.PubkeyToAddress(*publicKey)
+
+	// verify that the address is valid for the provided l1 height
+	if !validator.IsValid(address, l1Height) {
+		return ErrSigningAddressIsNotValidForL1Height{Address: address, L1Height: l1Height}
+	}
+
+	return nil
 }
 
 // VerifySignature implements SignatureVerifier
@@ -458,6 +463,11 @@ var version0Peek = []byte{0, 0, 0, 0, 0, 0, 0, 65}
 // ErrUnknownMessageFormat is an error that indicates that the message
 // format of the incoming data does not match any known version.
 var ErrUnknownMessageFormat = errors.New("unknown nitro message format")
+
+// ErrMissingSequencerSignature is an error that indicates that a
+// BroadcastFeedMessage carried neither a "signature" (v3.9.9) nor a
+// "signatureV2" (v3.10) value, so the signer cannot be recovered.
+var ErrMissingSequencerSignature = errors.New("sequencer signature must be set")
 
 // ParseNitroMessagesFromHotShot takes in a byte array and attempts to parse
 // it into something that allows for the message's signature to verified, and
