@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -156,6 +157,7 @@ func (e ErrHashLengthMismatch) Error() string {
 // This code is taken from the signature_hash found in the CAS library.
 // Code referenced here:
 // https://github.com/EspressoSystems/chain-adjacent-service/blob/a0404112bdc52f6d02e200c761a0854ec3398a65/src/rollups/nitro/nitro.rs#L446-L481
+// https://github.com/OffchainLabs/nitro/blob/b1cf6db81afbc1f67c898ac9add5d37391ebd87b/broadcaster/message/message.go#L64-L90
 //
 // We check for errors where they occur, but we don't need to perform error
 // checking where they will not occur.  Specifically when dealing with the
@@ -190,8 +192,8 @@ func ComputeBroadcastFeedMessageHash(message BroadcastFeedMessage, chainID uint6
 	io.WriteString(hasher, "Arbitrum Nitro Feed:")
 	binary.Write(hasher, binary.BigEndian, chainID)
 	binary.Write(hasher, binary.BigEndian, message.SequenceNumber)
-	if hash := message.BlockHash; len(hash) > 0 {
-		hasher.Write(hash[:])
+	if message.BlockHash != nil {
+		hasher.Write(message.BlockHash[:])
 	}
 	hasher.Write(message.BlockMetadata)
 	binary.Write(hasher, binary.BigEndian, message.Message.DelayedMessagesRead)
@@ -261,27 +263,72 @@ func (m V0SignatureAndMessages) VerifySignature(validator AddressValidator, chai
 // verifyV1Message verifies the signature on a single BroadcastFeedMessage
 // for the V1 format.  This will return an error when things fail that
 // can then be actioned upon.
+// Code referenced here:
+// https://github.com/OffchainLabs/nitro/blob/6b0af88157fe6b8cac37278e8bd8d2aa3677bb11/arbos/arbostypes/messagewithmeta.go#L38-L50
+//
+// nolint:errcheck
+func ComputeBroadcastFeedMessageHashLegacy(message BroadcastFeedMessage, chainID uint64) (result common.Hash, err error) {
+	if message.Message.Message == nil {
+		return result, ErrBroadcastFeeMessageMissingL1IncomingMessage{Message: message, ChainID: chainID}
+	}
+	l1Msg := message.Message.Message
+	if l1Msg.Header == nil {
+		return result, ErrBroadcastFeeMessageMissingL1IncomingMessageHeader{Message: message, ChainID: chainID}
+	}
+
+	encodedMessage, err := rlp.EncodeToBytes(l1Msg)
+	if err != nil {
+		return result, fmt.Errorf("failed to RLP-encode L1IncomingMessage for msg %d: %w", message.SequenceNumber, err)
+	}
+
+	hasher := crypto.NewKeccakState()
+	io.WriteString(hasher, "Arbitrum Nitro Feed:")
+	binary.Write(hasher, binary.BigEndian, message.SequenceNumber)
+	binary.Write(hasher, binary.BigEndian, chainID)
+	binary.Write(hasher, binary.BigEndian, message.Message.DelayedMessagesRead)
+	hasher.Write(encodedMessage)
+
+	hash := hasher.Sum(nil)
+	if have, want := uint64(copy(result[:], hash)), uint64(common.HashLength); have != want {
+		return result, ErrHashLengthMismatch{Have: have, Want: want}
+	}
+
+	return result, nil
+}
+
 func verifyV1Message(validator AddressValidator, chainID, l1Height uint64, msg BroadcastFeedMessage) error {
-	signature := msg.Signature
-	hash, err := ComputeBroadcastFeedMessageHash(msg, chainID)
-	if err != nil {
-		return fmt.Errorf("failed to compute hash for msg: %d: %w", msg.SequenceNumber, err)
+	// Nitro changed the sequencer feed-message signature hash between protocol
+	// versions from v3.10 on
+	hashers := []func(BroadcastFeedMessage, uint64) (common.Hash, error){
+		ComputeBroadcastFeedMessageHash,       // v3.10
+		ComputeBroadcastFeedMessageHashLegacy, // Pre v3.10
 	}
 
-	publicKey, err := crypto.SigToPub(hash[:], signature)
-	if err != nil {
-		return fmt.Errorf("failed to determine public key for signature for V1 message: %w", err)
+	// "signature" (pre v3.10) or "signatureV2" (v3.10) — whichever the message has.
+	signature := msg.SequencerSignature()
+
+	var lastErr error
+	for _, computeHash := range hashers {
+		hash, err := computeHash(msg, chainID)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to compute hash for msg %d: %w", msg.SequenceNumber, err)
+			continue
+		}
+
+		publicKey, err := crypto.SigToPub(hash[:], signature)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to determine public key for V1 message %d: %w", msg.SequenceNumber, err)
+			continue
+		}
+
+		address := crypto.PubkeyToAddress(*publicKey)
+		if validator.IsValid(address, l1Height) {
+			return nil
+		}
+		lastErr = ErrSigningAddressIsNotValidForL1Height{Address: address, L1Height: l1Height}
 	}
 
-	// Determine the Address for the Signing Key
-	address := crypto.PubkeyToAddress(*publicKey)
-
-	// verify that the address is valid for the provided l1 height
-	if !validator.IsValid(address, l1Height) {
-		return ErrSigningAddressIsNotValidForL1Height{Address: address, L1Height: l1Height}
-	}
-
-	return nil
+	return lastErr
 }
 
 // VerifySignature implements SignatureVerifier

@@ -78,9 +78,20 @@ type BroadcastFeedMessage struct {
 	SequenceNumber       uint64              `json:"sequenceNumber"`
 	Message              MessageWithMetadata `json:"message"`
 	Signature            []byte              `json:"signature"`
+	SignatureV2          []byte              `json:"signatureV2,omitempty"`
 	BlockMetadata        []byte              `json:"blockMetadata,omitempty"`
 	CumulativeSumMsgSize uint64              `json:"-"`
-	BlockHash            []byte              `json:"blockHash,omitempty"`
+	BlockHash            *common.Hash        `json:"blockHash,omitempty"`
+}
+
+// SequencerSignature returns the sequencer feed-message signature regardless of
+// which JSON key carried it ("signature" on Nitro v3.9.9, "signatureV2" on
+// v3.10). The signed hash also differs between versions — see verifyV1Message.
+func (m BroadcastFeedMessage) SequencerSignature() []byte {
+	if len(m.Signature) > 0 {
+		return m.Signature
+	}
+	return m.SignatureV2
 }
 
 // V1HeaderAndBroadcastFeedMessages represents the format of the messages that

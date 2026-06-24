@@ -337,7 +337,7 @@ func TestEspressoEmptyTransaction(t *testing.T) {
 	payload, _ := BuildRawHotShotPayload(test, msgFetcher, 100000) // this value is just a random number to get BuildRawHotShotPayload to return a payload
 	// create a fake signature for the payload.
 	signerFunc := func([]byte) ([]byte, error) {
-		return []byte{1}, nil
+		return make([]byte, 65), nil
 	}
 	signedPayload, _ := SignHotShotPayload(payload, signerFunc)
 	err := streamer.parseEspressoTransaction(signedPayload, 0)
