@@ -3,7 +3,7 @@ package op
 import (
 	"context"
 
-	"github.com/ethereum-optimism/optimism/op-service/eth"
+	optypes "github.com/EspressoSystems/espresso-streamers/op/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -33,7 +33,7 @@ type BufferedEspressoStreamer[B Batch] struct {
 	readPos uint64
 
 	startingBatchPos    uint64
-	currentSafeL1Origin eth.BlockID
+	currentSafeL1Origin optypes.BlockID
 }
 
 // Compile time assertion to ensure BufferedEspressoStreamer implements
@@ -107,7 +107,7 @@ func (b *BufferedEspressoStreamer[B]) handleL2PositionUpdate(nextPosition uint64
 // RefreshSafeL1Origin updates the safe L1 origin for the buffered streamer.
 // This method attempts to safely handle the adjustment of the safeL1Origin
 // without needing to defer to the underlying streamer unless necessary.
-func (b *BufferedEspressoStreamer[B]) RefreshSafeL1Origin(safeL1Origin eth.BlockID) {
+func (b *BufferedEspressoStreamer[B]) RefreshSafeL1Origin(safeL1Origin optypes.BlockID) {
 	if safeL1Origin.Number < b.currentSafeL1Origin.Number {
 		// If the safeL1Origin is before the starting batch position, we need to
 		// reset the buffered streamer to ensure we don't miss any batches.
@@ -125,7 +125,7 @@ func (b *BufferedEspressoStreamer[B]) RefreshSafeL1Origin(safeL1Origin eth.Block
 }
 
 // Refresh implements EspressoStreamerIFace
-func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockRef, safeBatchNumber uint64, safeL1Origin eth.BlockID) error {
+func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context, finalizedL1 optypes.L1BlockRef, safeBatchNumber uint64, safeL1Origin optypes.BlockID) error {
 	b.handleL2PositionUpdate(safeBatchNumber)
 	b.RefreshSafeL1Origin(safeL1Origin)
 

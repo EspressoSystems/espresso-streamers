@@ -4,23 +4,33 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/big"
 
 	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
-	"github.com/ethereum-optimism/optimism/op-node/rollup"
-	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
-	opCrypto "github.com/ethereum-optimism/optimism/op-service/crypto"
-	"github.com/ethereum-optimism/optimism/op-service/eth"
+	optypes "github.com/EspressoSystems/espresso-streamers/op/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+// ChainSignerFactory creates a SignerFn that is bound to a specific ChainID
+type ChainSignerFactory func(chainID *big.Int, from common.Address) ChainSigner
+
+// ChainSigner is a generic interface for signing transactions or arbitrary data.
+type ChainSigner interface {
+	// SignTransaction signs a transaction with the given address.
+	SignTransaction(ctx context.Context, addr common.Address, tx *types.Transaction) (*types.Transaction, error)
+
+	// Sign signs the hash of arbitrary data.
+	Sign(ctx context.Context, hash []byte) ([]byte, error)
+}
+
 // A SingularBatch with block number attached to restore ordering
 // when fetching from Espresso
 type EspressoBatch struct {
 	BatchHeader   *types.Header
-	Batch         derive.SingularBatch
+	Batch         optypes.SingleBatch
 	L1InfoDeposit *types.Transaction
 	SignerAddress common.Address
 }
@@ -33,8 +43,10 @@ func (b EspressoBatch) Signer() common.Address {
 	return b.SignerAddress
 }
 
-func (b EspressoBatch) L1Origin() eth.BlockID {
-	return b.Batch.Epoch()
+func (b EspressoBatch) L1Origin() optypes.BlockID {
+	return optypes.BlockID{
+		Hash: b.Batch.EpochHash, Number: b.Batch.EpochNum,
+	}
 }
 
 func (b EspressoBatch) Header() *types.Header {
@@ -46,7 +58,7 @@ func (b EspressoBatch) Hash() common.Hash {
 	return hash
 }
 
-func (b *EspressoBatch) ToEspressoTransaction(ctx context.Context, namespace uint64, signer opCrypto.ChainSigner) (*espressoCommon.Transaction, error) {
+func (b *EspressoBatch) ToEspressoTransaction(ctx context.Context, namespace uint64, signer ChainSigner) (*espressoCommon.Transaction, error) {
 	buf := new(bytes.Buffer)
 	err := rlp.Encode(buf, *b)
 	if err != nil {
@@ -54,7 +66,6 @@ func (b *EspressoBatch) ToEspressoTransaction(ctx context.Context, namespace uin
 	}
 
 	batcherSignature, err := signer.Sign(ctx, crypto.Keccak256(buf.Bytes()))
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to create batcher signature: %w", err)
 	}
@@ -62,20 +73,23 @@ func (b *EspressoBatch) ToEspressoTransaction(ctx context.Context, namespace uin
 	payload := append(batcherSignature, buf.Bytes()...)
 
 	return &espressoCommon.Transaction{Namespace: namespace, Payload: payload}, nil
-
 }
 
-func BlockToEspressoBatch(rollupCfg *rollup.Config, block *types.Block) (*EspressoBatch, error) {
+func IsDepositTx(txn *types.Transaction) bool {
+	return txn.Type() == optypes.DepositTxType
+}
+
+func BlockToEspressoBatch(block *types.Block) (*EspressoBatch, error) {
 	if len(block.Transactions()) == 0 {
 		return nil, fmt.Errorf("block doesn't contain any transactions")
 	}
 
 	l1InfoDeposit := block.Transactions()[0]
-	if !l1InfoDeposit.IsDepositTx() {
+	if !IsDepositTx(l1InfoDeposit) {
 		return nil, fmt.Errorf("first transaction is not L1 info deposit")
 	}
 
-	batch, _, err := derive.BlockToSingularBatch(rollupCfg, block)
+	batch, _, err := optypes.BlockToSingleBatch(block)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +135,7 @@ func UnmarshalEspressoTransaction(data []byte) (*EspressoBatch, error) {
 // NOTE: This function MUST guarantee no transient errors. It is allowed to fail only on
 // invalid batches or in case of misconfiguration of the batcher, in which case it should fail
 // for all batches.
-func (b *EspressoBatch) ToBlock(rollupCfg *rollup.Config) (*types.Block, error) {
+func (b *EspressoBatch) ToBlock() (*types.Block, error) {
 	// Re-insert the deposit transaction
 	txs := []*types.Transaction{b.L1InfoDeposit}
 	for i, opaqueTx := range b.Batch.Transactions {
@@ -132,7 +146,8 @@ func (b *EspressoBatch) ToBlock(rollupCfg *rollup.Config) (*types.Block, error) 
 		}
 		txs = append(txs, &tx)
 	}
-	return types.NewBlockWithHeader(b.BatchHeader).WithBody(types.Body{
-		Transactions: txs,
-	}), nil
+	return types.NewBlockWithHeader(b.BatchHeader).WithBody(
+		txs,
+		nil,
+	), nil
 }

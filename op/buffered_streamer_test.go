@@ -5,8 +5,7 @@ import (
 	"testing"
 
 	"github.com/EspressoSystems/espresso-streamers/op"
-	"github.com/ethereum-optimism/optimism/espresso"
-	"github.com/ethereum-optimism/optimism/op-service/eth"
+	optypes "github.com/EspressoSystems/espresso-streamers/op/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -16,12 +15,13 @@ import (
 // testing purposes.
 type BatchMock struct {
 	number   uint64
-	l1Origin eth.BlockID
+	l1Origin optypes.BlockID
 	header   *types.Header
 	hash     common.Hash
 }
 
 // Compile time assertion to ensure BatchMock implements the Batch interface
+
 var _ op.Batch = (*BatchMock)(nil)
 
 // Number implements op.Batch
@@ -30,7 +30,7 @@ func (b BatchMock) Number() uint64 {
 }
 
 // L1Origin implements op.Batch
-func (b BatchMock) L1Origin() eth.BlockID {
+func (b BatchMock) L1Origin() optypes.BlockID {
 	return b.l1Origin
 }
 
@@ -50,7 +50,7 @@ func (b BatchMock) Signer() common.Address {
 }
 
 // createBatchMock is a helper function to create a new BatchMock instance.
-func createBatchMock(number uint64, l1Origin eth.BlockID) *BatchMock {
+func createBatchMock(number uint64, l1Origin optypes.BlockID) *BatchMock {
 	return &BatchMock{
 		number:   number,
 		l1Origin: l1Origin,
@@ -67,19 +67,21 @@ func createBatchMock(number uint64, l1Origin eth.BlockID) *BatchMock {
 // call to `Reset` will reset the streamer's position to the start, in order
 // to simulate the worst case scenario in order to test the mitigation factors
 // / qualities of the [BufferedEspressoStreamer].
-type MockStreamer[B espresso.Batch] struct {
-	currentSafeL1Origin eth.BlockID
-	currentFinalizedL1  eth.L1BlockRef
+type MockStreamer[B op.Batch] struct {
+	currentSafeL1Origin optypes.BlockID
+	currentFinalizedL1  optypes.L1BlockRef
 	resetCallCount      uint
-	createBatch         func(number uint64, l1Origin eth.BlockID) *B
+	createBatch         func(number uint64, l1Origin optypes.BlockID) *B
 	// unmarshalBatch      func(b []byte) (*B, error)
 
 	position           uint64
 	fallbackHotshotPos uint64
 }
 
-var _ espresso.EspressoStreamer[espresso.Batch] = (*MockStreamer[espresso.Batch])(nil)
-var _ op.EspressoStreamer[BatchMock] = (*MockStreamer[BatchMock])(nil)
+var (
+	_ op.EspressoStreamer[op.Batch]  = (*MockStreamer[op.Batch])(nil)
+	_ op.EspressoStreamer[BatchMock] = (*MockStreamer[BatchMock])(nil)
+)
 
 // Update implements espresso.EspressoStreamer
 func (m *MockStreamer[B]) Update(ctx context.Context) error {
@@ -87,7 +89,7 @@ func (m *MockStreamer[B]) Update(ctx context.Context) error {
 }
 
 // Refresh implements espresso.EspressoStreamer
-func (m *MockStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockRef, safeBatchNumber uint64, safeL1Origin eth.BlockID) error {
+func (m *MockStreamer[B]) Refresh(ctx context.Context, finalizedL1 optypes.L1BlockRef, safeBatchNumber uint64, safeL1Origin optypes.BlockID) error {
 	m.RefreshSafeL1Origin(safeL1Origin)
 
 	m.currentFinalizedL1 = finalizedL1
@@ -96,7 +98,7 @@ func (m *MockStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockRe
 }
 
 // RefreshSafeL1Origin implements espresso.EspressoStreamer
-func (m *MockStreamer[B]) RefreshSafeL1Origin(safeL1Origin eth.BlockID) {
+func (m *MockStreamer[B]) RefreshSafeL1Origin(safeL1Origin optypes.BlockID) {
 	if safeL1Origin.Number < m.currentSafeL1Origin.Number {
 		m.currentSafeL1Origin = safeL1Origin
 		m.Reset()
@@ -185,7 +187,7 @@ func TestMockStreamerRefreshBehavior(t *testing.T) {
 	}
 
 	// Refresh the streamer with an advanced safe L1 origin
-	require.NoError(t, mockStreamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
+	require.NoError(t, mockStreamer.Refresh(ctx, optypes.L1BlockRef{Number: 5}, 0, optypes.BlockID{Number: 10}))
 
 	// Read a few batches to advance the streamer's position
 	for i := uint64(1); i <= 100; i++ {
@@ -195,7 +197,7 @@ func TestMockStreamerRefreshBehavior(t *testing.T) {
 	require.Equal(t, uint(0), mockStreamer.resetCallCount)
 
 	// Refresh the streamer with an advanced safe L1 origin
-	require.NoError(t, mockStreamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 80, eth.BlockID{Number: 9}))
+	require.NoError(t, mockStreamer.Refresh(ctx, optypes.L1BlockRef{Number: 5}, 80, optypes.BlockID{Number: 9}))
 
 	// Reset should have been called now
 	require.Equal(t, uint(1), mockStreamer.resetCallCount)
@@ -214,10 +216,10 @@ func TestBufferedStreamerMitigationBehavior(t *testing.T) {
 	mockStreamer := &MockStreamer[BatchMock]{
 		createBatch: createBatchMock,
 	}
-	streamer := espresso.NewBufferedEspressoStreamer(mockStreamer)
+	streamer := op.NewBufferedEspressoStreamer(mockStreamer)
 
 	// Refresh the streamer with an advanced safe L1 origin
-	require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
+	require.NoError(t, streamer.Refresh(ctx, optypes.L1BlockRef{Number: 5}, 0, optypes.BlockID{Number: 10}))
 
 	// Read a few batches to advance the streamer's position
 	for i := uint64(1); i <= 100; i++ {
@@ -225,7 +227,7 @@ func TestBufferedStreamerMitigationBehavior(t *testing.T) {
 	}
 
 	// Refresh the streamer with an advanced safe L1 origin
-	require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 80, eth.BlockID{Number: 10}))
+	require.NoError(t, streamer.Refresh(ctx, optypes.L1BlockRef{Number: 5}, 80, optypes.BlockID{Number: 10}))
 
 	// Explicitly Reset the Streamer
 	streamer.Reset()
@@ -248,10 +250,10 @@ func TestBufferedStreamerReOrgBehavior(t *testing.T) {
 	mockStreamer := &MockStreamer[BatchMock]{
 		createBatch: createBatchMock,
 	}
-	streamer := espresso.NewBufferedEspressoStreamer(mockStreamer)
+	streamer := op.NewBufferedEspressoStreamer(mockStreamer)
 
 	// Refresh the streamer with an advanced safe L1 origin
-	require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
+	require.NoError(t, streamer.Refresh(ctx, optypes.L1BlockRef{Number: 5}, 0, optypes.BlockID{Number: 10}))
 
 	// Read a few batches to advance the streamer's position
 	for i := uint64(1); i <= 100; i++ {
@@ -259,7 +261,7 @@ func TestBufferedStreamerReOrgBehavior(t *testing.T) {
 	}
 
 	// Refresh the streamer with an advanced safe L1 origin
-	require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 80, eth.BlockID{Number: 9}))
+	require.NoError(t, streamer.Refresh(ctx, optypes.L1BlockRef{Number: 5}, 80, optypes.BlockID{Number: 9}))
 
 	// Reset should have been called on the mock streamer
 	require.Equal(t, uint(1), mockStreamer.resetCallCount)
@@ -276,7 +278,7 @@ func TestBufferedStreamerPeek(t *testing.T) {
 		}
 		streamer := op.NewBufferedEspressoStreamer(mockStreamer)
 
-		require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
+		require.NoError(t, streamer.Refresh(ctx, optypes.L1BlockRef{Number: 5}, 0, optypes.BlockID{Number: 10}))
 
 		for i := uint64(1); i <= 5; i++ {
 			batch := streamer.Next(ctx)
@@ -309,7 +311,7 @@ func TestBufferedStreamerPeek(t *testing.T) {
 		}
 		streamer := op.NewBufferedEspressoStreamer(mockStreamer)
 
-		require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
+		require.NoError(t, streamer.Refresh(ctx, optypes.L1BlockRef{Number: 5}, 0, optypes.BlockID{Number: 10}))
 
 		peeked := streamer.Peek(ctx)
 		require.NotNil(t, peeked)
@@ -327,7 +329,7 @@ func TestBufferedStreamerPeek(t *testing.T) {
 		}
 		streamer := op.NewBufferedEspressoStreamer(mockStreamer)
 
-		require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 5, eth.BlockID{Number: 10}))
+		require.NoError(t, streamer.Refresh(ctx, optypes.L1BlockRef{Number: 5}, 5, optypes.BlockID{Number: 10}))
 
 		peeked := streamer.Peek(ctx)
 		require.NotNil(t, peeked)
@@ -344,7 +346,7 @@ func TestBufferedStreamerReadPosBehindAdjustment(t *testing.T) {
 	}
 	streamer := op.NewBufferedEspressoStreamer(mockStreamer)
 
-	require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 1}, 0, eth.BlockID{Number: 1}))
+	require.NoError(t, streamer.Refresh(ctx, optypes.L1BlockRef{Number: 1}, 0, optypes.BlockID{Number: 1}))
 
 	// Read 10 batches to populate the buffer (readPos advances to 10)
 	for i := uint64(1); i <= 10; i++ {
@@ -360,7 +362,7 @@ func TestBufferedStreamerReadPosBehindAdjustment(t *testing.T) {
 
 	// Refresh with safeBatchNumber=5: positionAdjustment=5 > readPos=2, so readPos resets to 0
 	// and the buffer is trimmed to start at batch #6.
-	require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 1}, 5, eth.BlockID{Number: 1}))
+	require.NoError(t, streamer.Refresh(ctx, optypes.L1BlockRef{Number: 1}, 5, optypes.BlockID{Number: 1}))
 
 	// The next batch should be #6 (first batch after the trimmed starting position)
 	next := streamer.Next(ctx)
@@ -377,7 +379,7 @@ func TestBufferedStreamerGetFallbackHotshotPos(t *testing.T) {
 	}
 	streamer := op.NewBufferedEspressoStreamer(mockStreamer)
 
-	require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
+	require.NoError(t, streamer.Refresh(ctx, optypes.L1BlockRef{Number: 5}, 0, optypes.BlockID{Number: 10}))
 
 	require.Equal(t, uint64(42), streamer.GetFallbackHotshotPos())
 

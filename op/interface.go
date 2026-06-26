@@ -3,7 +3,7 @@ package op
 import (
 	"context"
 
-	"github.com/ethereum-optimism/optimism/op-service/eth"
+	optypes "github.com/EspressoSystems/espresso-streamers/op/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -34,7 +34,7 @@ type EspressoStreamer[B Batch] interface {
 	//
 	// NOTE: This will only automatically reset the Streamer if the
 	// `safeBatchNumber` moves backwards.
-	Refresh(ctx context.Context, finalizedL1 eth.L1BlockRef, safeBatchNumber uint64, safeL1Origin eth.BlockID) error
+	Refresh(ctx context.Context, finalizedL1 optypes.L1BlockRef, safeBatchNumber uint64, safeL1Origin optypes.BlockID) error
 
 	// RefreshSafeL1Origin updates the safe L1 origin for the streamer. This is
 	// used to help the streamer determine if it needs to be reset or not based
@@ -42,7 +42,7 @@ type EspressoStreamer[B Batch] interface {
 	//
 	// NOTE: This will only automatically reset the Streamer if the
 	// `safeL1Origin` moves backwards.
-	RefreshSafeL1Origin(safeL1Origin eth.BlockID)
+	RefreshSafeL1Origin(safeL1Origin optypes.BlockID)
 
 	// Reset will reset the Streamer to the last known good safe state.
 	// This generally means resetting to the last know good safe batch

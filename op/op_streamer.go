@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/EspressoSystems/espresso-streamers/op/bindings"
+	optypes "github.com/EspressoSystems/espresso-streamers/op/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/hashicorp/golang-lru/v2/simplelru"
 
 	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
-	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -112,7 +112,7 @@ type BatchStreamer[B Batch] struct {
 	// HotShot position we start reading from, exclusive
 	originHotShotPos uint64
 	// Latest finalized block on the L1.
-	FinalizedL1 eth.L1BlockRef
+	FinalizedL1 optypes.L1BlockRef
 	// When the batch buffer is full and an incoming batch is dropped, this records
 	// the HotShot block position to rewind to (one block *before* the first dropped
 	// block) so that the next Update() after consuming the head batch re-scans from
@@ -211,7 +211,7 @@ func (s *BatchStreamer[B]) Reset() {
 // RefreshSafeL1Origin is a convenience method that allows us to update the
 // safe L1 origin of the Streamer. It will confirm the Espresso Block Height
 // and reset the state if necessary.
-func (s *BatchStreamer[B]) RefreshSafeL1Origin(safeL1Origin eth.BlockID) {
+func (s *BatchStreamer[B]) RefreshSafeL1Origin(safeL1Origin optypes.BlockID) {
 	shouldReset := s.confirmEspressoBlockHeight(safeL1Origin)
 	if shouldReset {
 		s.Reset()
@@ -219,7 +219,7 @@ func (s *BatchStreamer[B]) RefreshSafeL1Origin(safeL1Origin eth.BlockID) {
 }
 
 // Update streamer state based on L1 and L2 sync status
-func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockRef, safeBatchNumber uint64, safeL1Origin eth.BlockID) error {
+func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 optypes.L1BlockRef, safeBatchNumber uint64, safeL1Origin optypes.BlockID) error {
 	s.FinalizedL1 = finalizedL1
 
 	// Fetch the Espresso batcher address from the BatchAuthenticator contract.
@@ -261,7 +261,6 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 // CheckBatch checks the validity of the given batch against the finalized L1
 // block and the safe L1 origin.
 func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidity {
-
 	// Check cheaply whether this batch has already been buffered or finalized before
 	// making any L1 RPC calls.
 	if batch.Number() < s.nextBatchPos {
@@ -270,7 +269,7 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 	}
 
 	// Make sure the finalized L1 block is initialized before checking the block number.
-	if s.FinalizedL1 == (eth.L1BlockRef{}) {
+	if s.FinalizedL1 == (optypes.L1BlockRef{}) {
 		s.Log.Error("Finalized L1 block not initialized")
 		return BatchUndecided
 	}
@@ -727,12 +726,11 @@ func (s *BatchStreamer[B]) HasNext(ctx context.Context) bool {
 //
 // We do not propagate the error if Light Client is unreachable - this is not an essential
 // operation and streamer can continue operation
-func (s *BatchStreamer[B]) confirmEspressoBlockHeight(safeL1Origin eth.BlockID) (shouldReset bool) {
+func (s *BatchStreamer[B]) confirmEspressoBlockHeight(safeL1Origin optypes.BlockID) (shouldReset bool) {
 	shouldReset = false
 
 	hotshotState, err := s.EspressoLightClient.
 		FinalizedState(&bind.CallOpts{BlockNumber: new(big.Int).SetUint64(safeL1Origin.Number)})
-
 	if err != nil {
 		// If we have already advanced our fallback position before, there's no need to roll it back
 		s.fallbackHotShotPos = max(s.fallbackHotShotPos, s.originHotShotPos)

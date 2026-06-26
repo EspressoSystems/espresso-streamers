@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"math"
 	"math/big"
 	"math/rand"
@@ -15,19 +14,13 @@ import (
 	espressoClient "github.com/EspressoSystems/espresso-network/sdks/go/client"
 	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
 	"github.com/EspressoSystems/espresso-streamers/op/derivation"
-	"github.com/ethereum-optimism/optimism/espresso"
-	"github.com/ethereum-optimism/optimism/op-node/rollup"
-	"github.com/ethereum-optimism/optimism/op-node/rollup/derive"
-	"github.com/ethereum-optimism/optimism/op-service/crypto"
-	"github.com/ethereum-optimism/optimism/op-service/eth"
-	opsigner "github.com/ethereum-optimism/optimism/op-service/signer"
-	"github.com/ethereum-optimism/optimism/op-service/testutils"
+	"github.com/EspressoSystems/espresso-streamers/op/testutils"
+	optypes "github.com/EspressoSystems/espresso-streamers/op/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	geth_types "github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,7 +35,7 @@ func TestNewEspressoStreamer(t *testing.T) {
 		1,
 		mock,
 		mock,
-		mock, mock, new(NoOpLogger), derivation.CreateEspressoBatchUnmarshaler(),
+		mock, mock, testutils.DiscardLogger, derivation.CreateEspressoBatchUnmarshaler(),
 		0,
 		1,
 		batchAuthAddr,
@@ -65,7 +58,7 @@ func TestResetAfterNewDoesNotSkipBatch(t *testing.T) {
 		1,
 		mock,
 		mock,
-		mock, mock, new(NoOpLogger), derivation.CreateEspressoBatchUnmarshaler(),
+		mock, mock, testutils.DiscardLogger, derivation.CreateEspressoBatchUnmarshaler(),
 		0,
 		originBatchPos,
 		batchAuthAddr,
@@ -113,8 +106,8 @@ type MockStreamerSource struct {
 	// of the fields provided within the SyncStatus.  At the moment it only
 	// cares about SafeL2, and FinalizedL1. So this is what we will track
 
-	FinalizedL1 eth.L1BlockRef
-	SafeL2      eth.L2BlockRef
+	FinalizedL1 optypes.L1BlockRef
+	SafeL2      optypes.L2BlockRef
 
 	EspTransactionData     map[EspBlockAndNamespace]espressoClient.TransactionsInBlock
 	LatestEspHeight        uint64
@@ -151,7 +144,8 @@ func (m *MockStreamerSource) FetchNamespaceTransactionsInRange(ctx context.Conte
 		}
 
 		result = append(result, espressoCommon.NamespaceTransactionsRangeData{
-			Transactions: txs})
+			Transactions: txs,
+		})
 	}
 	return result, nil
 }
@@ -203,11 +197,19 @@ func (m *MockStreamerSource) AdvanceEspressoHeight() {
 // SyncStatus returns the current sync status of the mock streamer source.
 // Only the fields FinalizedL1, FinalizedL1, and SafeL2 are populated, as those
 // are the only fields explicitly inspected by the EspressoStreamer.
-func (m *MockStreamerSource) SyncStatus() *eth.SyncStatus {
-	return &eth.SyncStatus{
+func (m *MockStreamerSource) SyncStatus() *optypes.SyncStatus {
+	return &optypes.SyncStatus{
 		FinalizedL1: m.FinalizedL1,
 		SafeL2:      m.SafeL2,
 	}
+}
+
+// ResetReferencesToHeight resets the FinalizedL1 and SafeL2 references
+// to the specified height.
+func (m *MockStreamerSource) ResetReferencesToHeight(l1Height, l2Height uint64) {
+	finalizedL1 := createL1BlockRef(1)
+	m.FinalizedL1 = finalizedL1
+	m.SafeL2 = createL2BlockRef(l2Height, finalizedL1)
 }
 
 func (m *MockStreamerSource) AddEspressoTransactionData(height, namespace uint64, txData espressoClient.TransactionsInBlock) {
@@ -381,33 +383,6 @@ func (m *MockStreamerSource) FinalizedState(opts *bind.CallOpts) (FinalizedState
 // producing any output.
 type NoOpLogger struct{}
 
-var _ log.Logger = (*NoOpLogger)(nil)
-
-func (l *NoOpLogger) With(ctx ...interface{}) log.Logger                                   { return l }
-func (l *NoOpLogger) New(ctx ...interface{}) log.Logger                                    { return l }
-func (l *NoOpLogger) Log(level slog.Level, msg string, ctx ...interface{})                 {}
-func (l *NoOpLogger) Trace(msg string, ctx ...interface{})                                 {}
-func (l *NoOpLogger) Debug(msg string, ctx ...interface{})                                 {}
-func (l *NoOpLogger) Info(msg string, ctx ...interface{})                                  {}
-func (l *NoOpLogger) Warn(msg string, ctx ...interface{})                                  {}
-func (l *NoOpLogger) Error(msg string, ctx ...interface{})                                 {}
-func (l *NoOpLogger) Crit(msg string, ctx ...interface{})                                  { panic("critical error") }
-func (l *NoOpLogger) Write(level slog.Level, msg string, attrs ...any)                     {}
-func (l *NoOpLogger) Enabled(ctx context.Context, level slog.Level) bool                   { return true }
-func (l *NoOpLogger) Handler() slog.Handler                                                { return nil }
-func (l *NoOpLogger) TraceContext(ctx context.Context, msg string, ctxArgs ...interface{}) {}
-func (l *NoOpLogger) DebugContext(ctx context.Context, msg string, ctxArgs ...interface{}) {}
-func (l *NoOpLogger) InfoContext(ctx context.Context, msg string, ctxArgs ...interface{})  {}
-func (l *NoOpLogger) WarnContext(ctx context.Context, msg string, ctxArgs ...interface{})  {}
-func (l *NoOpLogger) ErrorContext(ctx context.Context, msg string, ctxArgs ...interface{}) {}
-func (l *NoOpLogger) CritContext(ctx context.Context, msg string, ctxArgs ...interface{}) {
-	panic("critical error")
-}
-func (l *NoOpLogger) LogAttrs(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) {
-}
-func (l *NoOpLogger) SetContext(ctx context.Context)                                          {}
-func (l *NoOpLogger) WriteCtx(ctx context.Context, level slog.Level, msg string, args ...any) {}
-
 func createHashFromHeight(height uint64) common.Hash {
 	var hash common.Hash
 	binary.LittleEndian.PutUint64(hash[(len(hash)-8):], height)
@@ -417,12 +392,12 @@ func createHashFromHeight(height uint64) common.Hash {
 // createL1BlockRef creates a mock L1BlockRef for testing purposes, with the
 // every field being derived from the provided height.  This should be
 // sufficient for testing purposes.
-func createL1BlockRef(height uint64) eth.L1BlockRef {
+func createL1BlockRef(height uint64) optypes.L1BlockRef {
 	var parentHash common.Hash
 	if height > 0 {
 		parentHash = createHashFromHeight(height - 1)
 	}
-	return eth.L1BlockRef{
+	return optypes.L1BlockRef{
 		Number:     height,
 		Hash:       createHashFromHeight(height),
 		ParentHash: parentHash,
@@ -433,14 +408,14 @@ func createL1BlockRef(height uint64) eth.L1BlockRef {
 // createL2BlockRef creates a mock L2BlockRef for testing purposes, with the
 // every field being derived from the provided height and L1BlockRef.  This
 // should be sufficient for testing purposes.
-func createL2BlockRef(height uint64, l1Ref eth.L1BlockRef) eth.L2BlockRef {
-	return eth.L2BlockRef{
+func createL2BlockRef(height uint64, l1Ref optypes.L1BlockRef) optypes.L2BlockRef {
+	return optypes.L2BlockRef{
 		Number:         height,
 		Hash:           createHashFromHeight(height),
 		ParentHash:     createHashFromHeight(height - 1),
 		Time:           height,
 		SequenceNumber: 1,
-		L1Origin: eth.BlockID{
+		L1Origin: optypes.BlockID{
 			Hash:   l1Ref.Hash,
 			Number: l1Ref.Number,
 		},
@@ -467,14 +442,13 @@ func setupStreamerTestingWithPerf(namespace uint64, batcherAddress common.Addres
 	state := NewMockStreamerSource()
 	state.TeeBatcherAddr = batcherAddress
 
-	logger := new(NoOpLogger)
 	streamer, err := NewEspressoStreamer(
 		namespace,
 		state,
 		state,
 		state,
 		state,
-		logger,
+		testutils.DiscardLogger,
 		derivation.CreateEspressoBatchUnmarshaler(),
 		0,
 		batchPos,
@@ -490,20 +464,20 @@ func setupStreamerTestingWithPerf(namespace uint64, batcherAddress common.Addres
 
 // createEspressoBatch creates a mock EspressoBatch for testing purposes
 // containing the provided SingularBatch.
-func createEspressoBatch(batch *derive.SingularBatch) *derivation.EspressoBatch {
+func createEspressoBatch(batch *optypes.SingleBatch) *derivation.EspressoBatch {
 	return &derivation.EspressoBatch{
 		BatchHeader: &geth_types.Header{
 			ParentHash: batch.ParentHash,
 			Number:     big.NewInt(int64(batch.Timestamp)),
 		},
 		Batch:         *batch,
-		L1InfoDeposit: geth_types.NewTx(&geth_types.DepositTx{}),
+		L1InfoDeposit: geth_types.NewTransaction(0, common.Address{}, big.NewInt(0), 0, big.NewInt(0), nil),
 	}
 }
 
 // createEspressoTransaction creates a mock Espresso transaction for testing purposes
 // containing the provided Espresso batch.
-func createEspressoTransaction(ctx context.Context, batch *derivation.EspressoBatch, namespace uint64, chainSigner crypto.ChainSigner) *espressoCommon.Transaction {
+func createEspressoTransaction(ctx context.Context, batch *derivation.EspressoBatch, namespace uint64, chainSigner derivation.ChainSigner) *espressoCommon.Transaction {
 	tx, err := batch.ToEspressoTransaction(ctx, namespace, chainSigner)
 	if have, want := err, error(nil); have != want {
 		panic(err)
@@ -531,8 +505,8 @@ func (m *MockStreamerSource) CreateEspressoTxnData(
 	rng *rand.Rand,
 	chainID *big.Int,
 	l2Height uint64,
-	chainSigner crypto.ChainSigner,
-) (*derive.SingularBatch, *derivation.EspressoBatch, *espressoCommon.Transaction, espressoClient.TransactionsInBlock) {
+	chainSigner derivation.ChainSigner,
+) (*optypes.SingleBatch, *derivation.EspressoBatch, *espressoCommon.Transaction, espressoClient.TransactionsInBlock) {
 	return m.CreateEspressoTxnDataWithL1Origin(ctx, namespace, rng, chainID, l2Height, chainSigner, m.FinalizedL1.Number, m.FinalizedL1.Hash)
 }
 
@@ -574,7 +548,7 @@ func TestEspressoStreamerSimpleIncremental(t *testing.T) {
 	namespace := uint64(42)
 	chainID := big.NewInt(int64(namespace))
 	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSignerFactory, signerAddress, _ := testutils.ChainSignerFactoryForPrivateKey(privateKeyString)
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
 	state, streamer := setupStreamerTesting(namespace, signerAddress)
@@ -612,7 +586,7 @@ func TestEspressoStreamerSimpleIncremental(t *testing.T) {
 
 		// This batch ** should ** match the one we created above.
 
-		if have, want := batchFromEsp.Batch.GetEpochNum(), batch.GetEpochNum(); have != want {
+		if have, want := batchFromEsp.Batch.EpochNum, batch.EpochNum; have != want {
 			t.Fatalf("batch epoch number does not match:\nhave:\n\t%v\ndo not want:\n\t%v\n", have, want)
 		}
 
@@ -634,7 +608,7 @@ func TestEspressoStreamerIncrementalDelayedConsumption(t *testing.T) {
 	namespace := uint64(42)
 	chainID := big.NewInt(int64(namespace))
 	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSignerFactory, signerAddress, _ := testutils.ChainSignerFactoryForPrivateKey(privateKeyString)
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
 	state, streamer := setupStreamerTesting(namespace, signerAddress)
@@ -643,7 +617,7 @@ func TestEspressoStreamerIncrementalDelayedConsumption(t *testing.T) {
 	// The number of batches to create
 	const N = 1000
 
-	var batches []*derive.SingularBatch
+	var batches []*optypes.SingleBatch
 
 	// update the state of our streamer
 	syncStatus := state.SyncStatus()
@@ -682,7 +656,7 @@ func TestEspressoStreamerIncrementalDelayedConsumption(t *testing.T) {
 
 		// This batch ** should ** match the one we created above.
 
-		if have, want := batchFromEsp.Batch.GetEpochNum(), batch.GetEpochNum(); have != want {
+		if have, want := batchFromEsp.Batch.EpochNum, batch.EpochNum; have != want {
 			t.Fatalf("batch epoch number does not match:\nhave:\n\t%v\ndo not want:\n\t%v\n", have, want)
 		}
 
@@ -707,7 +681,7 @@ func TestStreamerEspressoOutOfOrder(t *testing.T) {
 	namespace := uint64(42)
 	chainID := big.NewInt(int64(namespace))
 	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSignerFactory, signerAddress, _ := testutils.ChainSignerFactoryForPrivateKey(privateKeyString)
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
 	state, streamer := setupStreamerTesting(namespace, signerAddress)
@@ -722,7 +696,7 @@ func TestStreamerEspressoOutOfOrder(t *testing.T) {
 	}
 
 	const N = 1000
-	var batches []*derive.SingularBatch
+	var batches []*optypes.SingleBatch
 	for i := 0; i < N; i++ {
 		batch, _, _, block := state.CreateEspressoTxnData(
 			ctx,
@@ -750,7 +724,6 @@ func TestStreamerEspressoOutOfOrder(t *testing.T) {
 	}
 
 	{
-
 		for i := 0; i < N; i++ {
 			for j := 0; j < int(state.LatestEspHeight/100); j++ {
 				// Update the state of our streamer
@@ -768,7 +741,7 @@ func TestStreamerEspressoOutOfOrder(t *testing.T) {
 
 			// This batch ** should ** match the one we created above.
 
-			if have, want := batchFromEsp.Batch.GetEpochNum(), batch.GetEpochNum(); have != want {
+			if have, want := batchFromEsp.Batch.EpochNum, batch.EpochNum; have != want {
 				t.Fatalf("batch epoch number does not match:\nhave:\n\t%v\ndo not want:\n\t%v\n", have, want)
 			}
 
@@ -792,7 +765,7 @@ func TestEspressoStreamerDuplicationHandling(t *testing.T) {
 	namespace := uint64(42)
 	chainID := big.NewInt(int64(namespace))
 	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSignerFactory, signerAddress, _ := testutils.ChainSignerFactoryForPrivateKey(privateKeyString)
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
 	state, streamer := setupStreamerTesting(namespace, signerAddress)
@@ -839,7 +812,7 @@ func TestEspressoStreamerDuplicationHandling(t *testing.T) {
 
 		// This batch ** should ** match the one we created above.
 		// If the duplicate one is NOT skipped, this will FAIL.
-		require.Equal(t, batchFromEsp.Batch.GetEpochNum(), batch.GetEpochNum())
+		require.Equal(t, batchFromEsp.Batch.EpochNum, batch.EpochNum)
 
 		state.AdvanceSafeL2()
 		state.AdvanceFinalizedL1()
@@ -852,7 +825,7 @@ func TestEspressoStreamerDuplicationHandling(t *testing.T) {
 
 // createSingularBatch creates a mock SingularBatch for testing purposes
 // with a specific L1 origin (epoch number and hash).
-func (m *MockStreamerSource) createSingularBatch(rng *rand.Rand, txCount int, chainID *big.Int, l2Height uint64, epochNum uint64, epochHash common.Hash) *derive.SingularBatch {
+func (m *MockStreamerSource) createSingularBatch(rng *rand.Rand, txCount int, chainID *big.Int, l2Height uint64, epochNum uint64, epochHash common.Hash) *optypes.SingleBatch {
 	signer := geth_types.NewLondonSigner(chainID)
 	baseFee := big.NewInt(rng.Int63n(300_000_000_000))
 	txsEncoded := make([]hexutil.Bytes, 0, txCount)
@@ -865,9 +838,9 @@ func (m *MockStreamerSource) createSingularBatch(rng *rand.Rand, txCount int, ch
 		txsEncoded = append(txsEncoded, txEncoded)
 	}
 
-	return &derive.SingularBatch{
+	return &optypes.SingleBatch{
 		ParentHash:   createHashFromHeight(l2Height),
-		EpochNum:     rollup.Epoch(epochNum),
+		EpochNum:     epochNum,
 		EpochHash:    epochHash,
 		Timestamp:    l2Height,
 		Transactions: txsEncoded,
@@ -882,10 +855,10 @@ func (m *MockStreamerSource) CreateEspressoTxnDataWithL1Origin(
 	rng *rand.Rand,
 	chainID *big.Int,
 	l2Height uint64,
-	chainSigner crypto.ChainSigner,
+	chainSigner derivation.ChainSigner,
 	epochNum uint64,
 	epochHash common.Hash,
-) (*derive.SingularBatch, *derivation.EspressoBatch, *espressoCommon.Transaction, espressoClient.TransactionsInBlock) {
+) (*optypes.SingleBatch, *derivation.EspressoBatch, *espressoCommon.Transaction, espressoClient.TransactionsInBlock) {
 	txCount := rng.Intn(10)
 	batch := m.createSingularBatch(rng, txCount, chainID, l2Height, epochNum, epochHash)
 	espBatch := createEspressoBatch(batch)
@@ -901,7 +874,7 @@ func TestStreamerInvalidHeadBatchDiscarded(t *testing.T) {
 	namespace := uint64(42)
 	chainID := big.NewInt(int64(namespace))
 	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSignerFactory, signerAddress, _ := testutils.ChainSignerFactoryForPrivateKey(privateKeyString)
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -949,7 +922,7 @@ func TestStreamerMultipleBatchesSameNumber(t *testing.T) {
 	namespace := uint64(42)
 	chainID := big.NewInt(int64(namespace))
 	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSignerFactory, signerAddress, _ := testutils.ChainSignerFactoryForPrivateKey(privateKeyString)
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
 	t.Run("invalid batches dropped during HasNext iteration until valid found", func(t *testing.T) {
@@ -1088,7 +1061,7 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 	namespace := uint64(42)
 	chainID := big.NewInt(int64(namespace))
 	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSignerFactory, signerAddress, _ := testutils.ChainSignerFactoryForPrivateKey(privateKeyString)
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
 	t.Run("skipPos not overwritten across multiple fetch ranges", func(t *testing.T) {
@@ -1120,7 +1093,7 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 		// Place enough batches to fill the buffer and overflow by one full
 		// fetch range. Batch 1 is intentionally missing so HasNext stays
 		// false, forcing the Update loop to keep iterating across ranges.
-		totalBatches := int(espresso.BatchBufferCapacity) + int(espresso.HOTSHOT_BLOCK_FETCH_LIMIT)
+		totalBatches := int(BatchBufferCapacity) + int(HOTSHOT_BLOCK_FETCH_LIMIT)
 		for i := 0; i < totalBatches; i++ {
 			_, _, _, espTxn := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, uint64(i+2), chainSigner)
 			state.AddEspressoTransactionData(uint64(i), namespace, espTxn)
@@ -1273,7 +1246,7 @@ func TestStreamerBatchOrderingDeterminism(t *testing.T) {
 	namespace := uint64(42)
 	chainID := big.NewInt(int64(namespace))
 	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSignerFactory, signerAddress, _ := testutils.ChainSignerFactoryForPrivateKey(privateKeyString)
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
 	t.Run("must wait for first-inserted batch to become decided before processing later ones", func(t *testing.T) {
@@ -1459,7 +1432,7 @@ func TestPeek(t *testing.T) {
 	namespace := uint64(42)
 	chainID := big.NewInt(int64(namespace))
 	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSignerFactory, signerAddress, _ := testutils.ChainSignerFactoryForPrivateKey(privateKeyString)
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
 	t.Run("returns valid batch without consuming it", func(t *testing.T) {
@@ -1516,7 +1489,7 @@ func TestSetProperHead(t *testing.T) {
 	namespace := uint64(42)
 	chainID := big.NewInt(int64(namespace))
 	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSignerFactory, signerAddress, _ := testutils.ChainSignerFactoryForPrivateKey(privateKeyString)
 	_ = chainSignerFactory(chainID, common.Address{})
 
 	ctx := context.Background()
@@ -1535,13 +1508,20 @@ func TestSetProperHead(t *testing.T) {
 				ParentHash: parentHash,
 				Number:     big.NewInt(1),
 			},
-			Batch: derive.SingularBatch{
+			Batch: optypes.SingleBatch{
 				ParentHash: parentHash,
-				EpochNum:   rollup.Epoch(state.FinalizedL1.Number),
+				EpochNum:   state.FinalizedL1.Number,
 				EpochHash:  state.FinalizedL1.Hash,
 				Timestamp:  1,
 			},
-			L1InfoDeposit: geth_types.NewTx(&geth_types.DepositTx{}),
+			L1InfoDeposit: geth_types.NewTransaction(
+				0,
+				common.Address{},
+				big.NewInt(0),
+				0,
+				big.NewInt(0),
+				nil,
+			),
 			SignerAddress: signerAddress,
 		}
 	}
@@ -1565,103 +1545,6 @@ func TestSetProperHead(t *testing.T) {
 	peeked = streamer.Peek(ctx)
 	require.NotNil(t, peeked)
 	require.Equal(t, correctParentHash, (*peeked).Header().ParentHash)
-}
-
-// TestSetProperHeadNilHeadBatch verifies that SetProperHead does not panic when
-// headBatch is nil.
-func TestSetProperHeadNilHeadBatch(t *testing.T) {
-	ctx := context.Background()
-
-	state, streamer := setupStreamerTesting(42, common.Address{})
-	syncStatus := state.SyncStatus()
-	err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
-	require.NoError(t, err)
-
-	require.NotPanics(t, func() {
-		// headBatch is nil.
-		streamer.SetProperHead(common.Hash{})
-	})
-}
-
-// TestCheckBatchSignerPreFilter verifies the espressoBatcher pre-filter in CheckBatch.
-func TestCheckBatchSignerPreFilter(t *testing.T) {
-	ctx := context.Background()
-
-	makeBatch := func(epochNum uint64, signer common.Address) derivation.EspressoBatch {
-		return derivation.EspressoBatch{
-			BatchHeader: &geth_types.Header{
-				Number: big.NewInt(2),
-			},
-			Batch: derive.SingularBatch{
-				EpochNum:  rollup.Epoch(epochNum),
-				EpochHash: createHashFromHeight(epochNum),
-				Timestamp: 1,
-			},
-			L1InfoDeposit: geth_types.NewTx(&geth_types.DepositTx{}),
-			SignerAddress: signer,
-		}
-	}
-
-	knownBatcher := common.HexToAddress("0x0000000000000000000000000000000000000001")
-	unknownSigner := common.HexToAddress("0x000000000000000000000000000000000000dead")
-	futureEpoch := uint64(9999999)
-	historicalEpoch := uint64(50)
-
-	t.Run("espressoBatcher zero: unknown signer with future origin is BatchUndecided not BatchDrop", func(t *testing.T) {
-		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
-		streamer.FinalizedL1 = createL1BlockRef(100)
-
-		batch := makeBatch(futureEpoch, unknownSigner)
-		require.Equal(t, BatchValidity(BatchUndecided), streamer.CheckBatch(ctx, batch))
-	})
-
-	t.Run("espressoBatcher set: unknown signer with future origin is BatchDrop", func(t *testing.T) {
-		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
-		streamer.FinalizedL1 = createL1BlockRef(100)
-		streamer.espressoBatcher = knownBatcher
-
-		batch := makeBatch(futureEpoch, unknownSigner)
-		require.Equal(t, BatchValidity(BatchDrop), streamer.CheckBatch(ctx, batch))
-	})
-
-	t.Run("espressoBatcher set: known signer with future origin passes the pre-filter", func(t *testing.T) {
-		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
-		streamer.FinalizedL1 = createL1BlockRef(100)
-		streamer.espressoBatcher = knownBatcher
-
-		batch := makeBatch(futureEpoch, knownBatcher)
-		require.Equal(t, BatchValidity(BatchUndecided), streamer.CheckBatch(ctx, batch))
-	})
-
-	t.Run("historical batch: unknown signer bypasses pre-filter but fails post-buffer check", func(t *testing.T) {
-		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
-		streamer.FinalizedL1 = createL1BlockRef(100)
-		streamer.espressoBatcher = knownBatcher
-
-		batch := makeBatch(historicalEpoch, unknownSigner)
-		require.Equal(t, BatchValidity(BatchDrop), streamer.CheckBatch(ctx, batch))
-	})
-
-	t.Run("historical batch: known signer bypasses pre-filter and is accepted", func(t *testing.T) {
-		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
-		streamer.FinalizedL1 = createL1BlockRef(100)
-		streamer.espressoBatcher = knownBatcher
-
-		batch := makeBatch(historicalEpoch, knownBatcher)
-		require.Equal(t, BatchValidity(BatchAccept), streamer.CheckBatch(ctx, batch))
-	})
-
-	t.Run("after Refresh: espressoBatcher is populated from contract and pre-filter works", func(t *testing.T) {
-		state, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
-		syncStatus := state.SyncStatus()
-
-		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
-		require.NoError(t, err)
-		require.Equal(t, knownBatcher, streamer.espressoBatcher)
-
-		batch := makeBatch(futureEpoch, unknownSigner)
-		require.Equal(t, BatchValidity(BatchDrop), streamer.CheckBatch(ctx, batch))
-	})
 }
 
 // TestUpdateReturnsErrorOnMaxUint64BlockHeight verifies that Update returns an error
@@ -1695,7 +1578,7 @@ func TestDuplicateHeadBatchDropped(t *testing.T) {
 	namespace := uint64(42)
 	chainID := big.NewInt(int64(namespace))
 	privateKeyString := "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
-	chainSignerFactory, signerAddress, _ := crypto.ChainSignerFactoryFromConfig(&NoOpLogger{}, privateKeyString, "", "", opsigner.CLIConfig{})
+	chainSignerFactory, signerAddress, _ := testutils.ChainSignerFactoryForPrivateKey(privateKeyString)
 	chainSigner := chainSignerFactory(chainID, common.Address{})
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethereum-optimism/optimism/op-service/eth"
+	optypes "github.com/EspressoSystems/espresso-streamers/op/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -14,14 +14,14 @@ import (
 type mockBatch struct {
 	number   uint64
 	hash     common.Hash
-	l1Origin eth.BlockID
+	l1Origin optypes.BlockID
 }
 
 func (m mockBatch) Number() uint64 {
 	return m.number
 }
 
-func (m mockBatch) L1Origin() eth.BlockID {
+func (m mockBatch) L1Origin() optypes.BlockID {
 	return m.l1Origin
 }
 
@@ -44,7 +44,7 @@ func newMockBatch(number uint64) mockBatch {
 	return mockBatch{
 		number: number,
 		hash:   common.BigToHash(big.NewInt(int64(number))),
-		l1Origin: eth.BlockID{
+		l1Origin: optypes.BlockID{
 			Number: number,
 			Hash:   common.BigToHash(big.NewInt(int64(number))),
 		},
@@ -56,7 +56,7 @@ func newMockBatchWithHash(number uint64, hash common.Hash) mockBatch {
 	return mockBatch{
 		number: number,
 		hash:   hash,
-		l1Origin: eth.BlockID{
+		l1Origin: optypes.BlockID{
 			Number: number,
 			Hash:   common.BigToHash(big.NewInt(int64(number))),
 		},

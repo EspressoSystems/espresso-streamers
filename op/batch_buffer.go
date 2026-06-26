@@ -4,7 +4,7 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/ethereum-optimism/optimism/op-service/eth"
+	optypes "github.com/EspressoSystems/espresso-streamers/op/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -23,12 +23,14 @@ const (
 	BatchPast
 )
 
-var ErrAtCapacity = errors.New("batch buffer at capacity")
-var ErrDuplicateBatch = errors.New("duplicate batch")
+var (
+	ErrAtCapacity     = errors.New("batch buffer at capacity")
+	ErrDuplicateBatch = errors.New("duplicate batch")
+)
 
 type Batch interface {
 	Number() uint64
-	L1Origin() eth.BlockID
+	L1Origin() optypes.BlockID
 	Header() *types.Header
 	Hash() common.Hash
 	Signer() common.Address

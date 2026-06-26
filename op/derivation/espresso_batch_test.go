@@ -15,6 +15,7 @@ func TestUnmarshalEspressoTransactionTooShort(t *testing.T) {
 		{},
 		make([]byte, crypto.SignatureLength-1),
 	}
+
 	for _, data := range cases {
 		_, err := UnmarshalEspressoTransaction(data)
 		require.Error(t, err, "expected error for %d-byte input", len(data))
