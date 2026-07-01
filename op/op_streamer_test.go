@@ -1763,13 +1763,15 @@ func TestCheckBatchAuthorizesCurrentBatcher(t *testing.T) {
 	cases := []struct {
 		name           string
 		currentBatcher common.Address
+		latestBatcher  common.Address
 		originBatcher  common.Address
 		signer         common.Address
 		want           BatchValidity
 	}{
 		{
-			name:           "current batcher accepted for old origin (rotation)",
+			name:           "current batcher accepted for old origin (rotation finalized)",
 			currentBatcher: newBatcher,
+			latestBatcher:  newBatcher,
 			originBatcher:  oldBatcher,
 			signer:         newBatcher,
 			want:           BatchAccept,
@@ -1777,6 +1779,7 @@ func TestCheckBatchAuthorizesCurrentBatcher(t *testing.T) {
 		{
 			name:           "origin batcher still accepted",
 			currentBatcher: newBatcher,
+			latestBatcher:  newBatcher,
 			originBatcher:  oldBatcher,
 			signer:         oldBatcher,
 			want:           BatchAccept,
@@ -1784,20 +1787,31 @@ func TestCheckBatchAuthorizesCurrentBatcher(t *testing.T) {
 		{
 			name:           "unknown signer dropped",
 			currentBatcher: newBatcher,
+			latestBatcher:  newBatcher,
 			originBatcher:  oldBatcher,
 			signer:         otherAddr,
 			want:           BatchDrop,
 		},
 		{
-			name:           "new signer dropped until rotation reflected in current batcher",
-			currentBatcher: oldBatcher, // espressoBatcher not yet updated to newBatcher
+			name:           "pending rotation not yet finalized is undecided",
+			currentBatcher: oldBatcher,
+			latestBatcher:  newBatcher,
+			originBatcher:  oldBatcher,
+			signer:         newBatcher,
+			want:           BatchUndecided,
+		},
+		{
+			name:           "new signer with no pending rotation dropped",
+			currentBatcher: oldBatcher,
+			latestBatcher:  oldBatcher, // no rotation in flight
 			originBatcher:  oldBatcher,
 			signer:         newBatcher,
 			want:           BatchDrop,
 		},
 		{
-			name:           "zero signer not bypassed when current batcher unset",
+			name:           "zero signer not bypassed when batchers unset",
 			currentBatcher: common.Address{},
+			latestBatcher:  common.Address{},
 			originBatcher:  oldBatcher,
 			signer:         common.Address{},
 			want:           BatchDrop,
@@ -1806,10 +1820,11 @@ func TestCheckBatchAuthorizesCurrentBatcher(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, streamer := setupStreamerTesting(1, oldBatcher)
+			state, streamer := setupStreamerTesting(1, oldBatcher)
 			streamer.FinalizedL1 = createL1BlockRef(100)
 			streamer.nextBatchPos = 1
 			streamer.espressoBatcher = tc.currentBatcher
+			state.TeeBatcherAddr = tc.latestBatcher
 			// Seed the cache so CheckBatch resolves the origin batcher/hash without
 			// hitting the mock L1 client or BatchAuthenticator.
 			streamer.finalizedL1StateCache.Add(originNumber, l1State{
