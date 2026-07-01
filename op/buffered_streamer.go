@@ -132,8 +132,10 @@ func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context, finalizedL1 e
 	return b.streamer.Refresh(ctx, finalizedL1, safeBatchNumber, safeL1Origin)
 }
 
-// Reset resets the buffered streamer state to the last known good
-// safe batch position.
+// Reset rewinds the start of the cached batch window.
+//
+// Buffered batches are replayed from the safe starting point, but the underlying streamer is not
+// reset.
 func (b *BufferedEspressoStreamer[B]) Reset() {
 	// Reset the buffered streamer state
 	b.readPos = 0

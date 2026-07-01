@@ -55,3 +55,49 @@ type L1IncomingMessageHeader struct {
 	RequestId   *common.Hash   `json:"requestId" rlp:"nilList"`
 	L1BaseFee   *big.Int       `json:"baseFeeL1"`
 }
+
+type V0SignatureAndMessages struct {
+	Signature []byte
+	Hash      common.Hash
+	Messages  []V0MessageAndIndex
+}
+
+type V0MessageAndIndex struct {
+	Pos     uint64
+	Message MessageWithMetadata
+}
+
+// V1Header represents the value that is utilized to indicate version 1
+// of the Nitro header.
+const V1Header = "V1"
+
+// BroadcastFeedMessage represents the Nitro Message format that comes from
+// the Nitro feed stream. Version 1 of the Nitro chain being stored on
+// Espresso also utilizes this format.
+type BroadcastFeedMessage struct {
+	SequenceNumber       uint64              `json:"sequenceNumber"`
+	Message              MessageWithMetadata `json:"message"`
+	Signature            []byte              `json:"signature,omitempty"`
+	SignatureV2          []byte              `json:"signatureV2,omitempty"`
+	BlockMetadata        []byte              `json:"blockMetadata,omitempty"`
+	CumulativeSumMsgSize uint64              `json:"-"`
+	BlockHash            *common.Hash        `json:"blockHash,omitempty"`
+}
+
+// SequencerSignatureAndHasher returns the sequencer feed-message signature
+// along with the hasher that produced the signed hash
+func (m BroadcastFeedMessage) SequencerSignatureAndHasher() ([]byte, func(message BroadcastFeedMessage, chainID uint64) (result common.Hash, err error)) {
+	if len(m.Signature) > 0 {
+		return m.Signature, ComputeBroadcastFeedMessageHash
+	}
+	return m.SignatureV2, ComputeBroadcastFeedMessageHashV2
+}
+
+// V1HeaderAndBroadcastFeedMessages represents the format of the messages that
+// are submitted and stored on Espresso.
+//
+// This format is prefixed with the V1Header, but since this is static and
+// non-changing, it can be easily omitted for convenience.
+type V1HeaderAndBroadcastFeedMessages struct {
+	Messages []BroadcastFeedMessage
+}
