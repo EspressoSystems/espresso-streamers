@@ -1723,3 +1723,88 @@ func TestDuplicateHeadBatchDropped(t *testing.T) {
 	require.True(t, streamer.HasNext(ctx))
 	require.Equal(t, uint64(2), streamer.Next(ctx).Number())
 }
+
+// TestCheckBatchAuthorizesCurrentBatcher covers the batcher-rotation fix in
+// CheckBatch: a batch is accepted if its signer is either the batcher authorized
+// at the batch's L1 origin OR the batcher currently authorized on-chain
+func TestCheckBatchAuthorizesCurrentBatcher(t *testing.T) {
+	oldBatcher := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	newBatcher := common.HexToAddress("0x2222222222222222222222222222222222222222")
+	otherAddr := common.HexToAddress("0x3333333333333333333333333333333333333333")
+
+	const originNumber = uint64(50)
+	originHash := common.HexToHash("0xabc123")
+
+	// A batch at L2 number 10 whose L1 origin is (originNumber, originHash).
+	makeBatch := func(signer common.Address) derivation.EspressoBatch {
+		b := createEspressoBatch(&derive.SingularBatch{
+			EpochNum:  rollup.Epoch(originNumber),
+			EpochHash: originHash,
+			Timestamp: 10, // becomes BatchHeader.Number -> batch.Number()
+		})
+		b.SignerAddress = signer
+		return *b
+	}
+
+	cases := []struct {
+		name           string
+		currentBatcher common.Address
+		originBatcher  common.Address
+		signer         common.Address
+		want           BatchValidity
+	}{
+		{
+			name:           "current batcher accepted for old origin (rotation)",
+			currentBatcher: newBatcher,
+			originBatcher:  oldBatcher,
+			signer:         newBatcher,
+			want:           BatchAccept,
+		},
+		{
+			name:           "origin batcher still accepted",
+			currentBatcher: newBatcher,
+			originBatcher:  oldBatcher,
+			signer:         oldBatcher,
+			want:           BatchAccept,
+		},
+		{
+			name:           "unknown signer dropped",
+			currentBatcher: newBatcher,
+			originBatcher:  oldBatcher,
+			signer:         otherAddr,
+			want:           BatchDrop,
+		},
+		{
+			name:           "new signer dropped until rotation reflected in current batcher",
+			currentBatcher: oldBatcher, // espressoBatcher not yet updated to newBatcher
+			originBatcher:  oldBatcher,
+			signer:         newBatcher,
+			want:           BatchDrop,
+		},
+		{
+			name:           "zero signer not bypassed when current batcher unset",
+			currentBatcher: common.Address{},
+			originBatcher:  oldBatcher,
+			signer:         common.Address{},
+			want:           BatchDrop,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, streamer := setupStreamerTesting(1, oldBatcher)
+			streamer.FinalizedL1 = createL1BlockRef(100)
+			streamer.nextBatchPos = 1
+			streamer.espressoBatcher = tc.currentBatcher
+			// Seed the cache so CheckBatch resolves the origin batcher/hash without
+			// hitting the mock L1 client or BatchAuthenticator.
+			streamer.finalizedL1StateCache.Add(originNumber, l1State{
+				hash:               originHash,
+				authorizedBatchers: []common.Address{tc.originBatcher},
+			})
+
+			got := streamer.CheckBatch(context.Background(), makeBatch(tc.signer))
+			require.Equal(t, tc.want, got)
+		})
+	}
+}

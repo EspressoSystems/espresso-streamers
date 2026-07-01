@@ -312,7 +312,8 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 		s.finalizedL1StateCache.Add(origin.Number, state)
 	}
 
-	if batch.Signer() != s.espressoBatcher && !slices.Contains(state.authorizedBatchers, batch.Signer()) {
+	matchesCurrentBatcher := s.espressoBatcher != (common.Address{}) && batch.Signer() == s.espressoBatcher
+	if !matchesCurrentBatcher && !slices.Contains(state.authorizedBatchers, batch.Signer()) {
 		s.Log.Info(DroppingBatchLogPrefix+" with invalid espresso batcher", "batch", batch.Hash(), "signer", batch.Signer(), "espressoBatcher", s.espressoBatcher)
 		return BatchDrop
 	}
