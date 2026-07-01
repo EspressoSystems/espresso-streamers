@@ -318,27 +318,34 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 			return BatchUndecided
 		}
 
-		// `espressoBatcherAtBlock` returns the zero address if `origin.Number`
-		// precedes the first history entry (i.e. there was no authorized
-		// Espresso batcher at that L1 height). The batch can't be authentic in
-		// that window — drop it rather than waiting around.
-		if espressoBatcher == (common.Address{}) {
-			s.Log.Info(DroppingBatchLogPrefix+" with no authorized espresso batcher at L1 origin",
-				"batch", batch.Hash(),
-				"originNumber", origin.Number)
-			return BatchDrop
+		// `espressoBatcherAtBlock` returns the zero address when `origin.Number`
+		// precedes the first history entry — e.g. origins before the
+		// BatchAuthenticator was initialized on a chain that enforces Espresso
+		// from genesis. We don't treat that as authoritative: the batch may still
+		// be signed by the batcher currently authorized on-chain, which the check
+		// below accepts. Record an empty authorized set for such origins so the
+		// decision rests solely on the current-batcher fallback.
+		authorizedBatchers := []common.Address{}
+		if espressoBatcher != (common.Address{}) {
+			authorizedBatchers = []common.Address{espressoBatcher}
 		}
 
 		state = l1State{
 			hash:               hash,
-			authorizedBatchers: []common.Address{espressoBatcher},
+			authorizedBatchers: authorizedBatchers,
 		}
 
 		s.finalizedL1StateCache.Add(origin.Number, state)
 	}
 
-	if !slices.Contains(state.authorizedBatchers, batch.Signer()) {
-		s.Log.Info(DroppingBatchLogPrefix+" with invalid espresso batcher", "batch", batch.Hash(), "signer", batch.Signer())
+	// Accept the batch if it is signed either by the batcher authorized at its
+	// L1 origin or by the batcher currently authorized on-chain. The latter
+	// covers batcher rotations and origins that predate the first history entry,
+	// where the origin lookup would otherwise reject a batch from the current
+	// batcher.
+	matchesCurrentBatcher := s.espressoBatcher != (common.Address{}) && batch.Signer() == s.espressoBatcher
+	if !matchesCurrentBatcher && !slices.Contains(state.authorizedBatchers, batch.Signer()) {
+		s.Log.Info(DroppingBatchLogPrefix+" with invalid espresso batcher", "batch", batch.Hash(), "signer", batch.Signer(), "espressoBatcher", s.espressoBatcher)
 		return BatchDrop
 	}
 
