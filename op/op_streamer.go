@@ -314,6 +314,19 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 
 	matchesCurrentBatcher := s.espressoBatcher != (common.Address{}) && batch.Signer() == s.espressoBatcher
 	if !matchesCurrentBatcher && !slices.Contains(state.authorizedBatchers, batch.Signer()) {
+		// Check if its in unfinalized, if it is, dont drop it.
+		latestBatcher, err := s.BatchAuthenticatorCaller.EspressoBatcher(&bind.CallOpts{Context: ctx})
+		if err != nil {
+			s.Log.Warn("Failed to fetch the latest espresso batcher address, pending resync",
+				"batch", batch.Hash(), "signer", batch.Signer(), "error", err)
+			return BatchUndecided
+		}
+		if latestBatcher != (common.Address{}) && batch.Signer() == latestBatcher {
+			s.Log.Info("Batch signed by pending (unfinalized) espresso batcher, awaiting L1 finality",
+				"batch", batch.Hash(), "signer", batch.Signer(),
+				"espressoBatcher", s.espressoBatcher, "latestBatcher", latestBatcher)
+			return BatchUndecided
+		}
 		s.Log.Info(DroppingBatchLogPrefix+" with invalid espresso batcher", "batch", batch.Hash(), "signer", batch.Signer(), "espressoBatcher", s.espressoBatcher)
 		return BatchDrop
 	}
