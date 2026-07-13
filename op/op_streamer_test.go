@@ -1,6 +1,7 @@
 package op
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -237,13 +238,20 @@ func (m *MockStreamerSource) HeaderHashByNumber(ctx context.Context, number *big
 // from the on-chain BatchAuthenticator history (PR celo-org/optimism#443).
 var espressoBatcherAtBlockSelector = []byte{0x7d, 0x53, 0x1a, 0x78}
 
+// espressoBatcherSelector is the 4-byte function selector for
+// espressoBatcher() — 0x88da3bb7. Refresh calls this view to fetch the
+// current Espresso batcher address at the finalized L1 block.
+var espressoBatcherSelector = []byte{0x88, 0xda, 0x3b, 0xb7}
+
 func (m *MockStreamerSource) CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error) {
 	// Return non-empty bytes so the bindings consider the contract deployed
 	return []byte{0x01}, nil
 }
 
 func (m *MockStreamerSource) CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
-	if len(call.Data) >= 4 && common.Bytes2Hex(call.Data[:4]) == common.Bytes2Hex(espressoBatcherAtBlockSelector) {
+	if len(call.Data) >= 4 &&
+		(bytes.Equal(call.Data[:4], espressoBatcherAtBlockSelector) ||
+			bytes.Equal(call.Data[:4], espressoBatcherSelector)) {
 		// The contract's history-based view is keyed by L1 block number, but
 		// for unit-test purposes a single configured TEE batcher address is
 		// sufficient. Ignore the encoded l1Block argument and return the mock

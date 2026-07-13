@@ -304,7 +304,10 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 		// don't need an archive node to serve a historical state read.
 		// `origin.Number <= s.FinalizedL1.Number` is already guaranteed above.
 		espressoBatcher, err := s.BatchAuthenticatorCaller.EspressoBatcherAtBlock(
-			&bind.CallOpts{BlockNumber: new(big.Int).SetUint64(s.FinalizedL1.Number)},
+			&bind.CallOpts{
+				Context:     ctx,
+				BlockNumber: new(big.Int).SetUint64(s.FinalizedL1.Number),
+			},
 			origin.Number,
 		)
 		if err != nil {
