@@ -60,6 +60,7 @@ type EspressoClient interface {
 // the L1 client.
 type L1Client interface {
 	HeaderHashByNumber(ctx context.Context, number *big.Int) (common.Hash, error)
+	FinalizedBlock(ctx context.Context) (eth.L1BlockRef, error)
 	bind.ContractCaller
 }
 
@@ -220,11 +221,14 @@ func (s *BatchStreamer[B]) RefreshSafeL1Origin(safeL1Origin eth.BlockID) {
 
 // Update streamer state based on L1 and L2 sync status
 func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockRef, safeBatchNumber uint64, safeL1Origin eth.BlockID) error {
-	s.FinalizedL1 = finalizedL1
+	// Finalized L1 is monotonic
+	if finalizedL1.Number > s.FinalizedL1.Number {
+		s.FinalizedL1 = finalizedL1
+	}
 
 	// Fetch the Espresso batcher address from the BatchAuthenticator contract.
 	espressoBatcher, err := s.BatchAuthenticatorCaller.EspressoBatcher(
-		&bind.CallOpts{Context: ctx, BlockNumber: new(big.Int).SetUint64(finalizedL1.Number)})
+		&bind.CallOpts{Context: ctx, BlockNumber: new(big.Int).SetUint64(s.FinalizedL1.Number)})
 	if err != nil {
 		s.Log.Warn("Failed to fetch espresso batcher address", "error", err)
 	} else if espressoBatcher != (common.Address{}) {
@@ -258,6 +262,82 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 	return nil
 }
 
+// signerAuthorization classifies a batch's signer against the recognized batchers.
+type signerAuthorization uint8
+
+const (
+	// signerUnauthorized: matches no known batcher, lets drop
+	signerUnauthorized signerAuthorization = iota
+	// signerAuthorized: matches the finalized-view batcher or a batcher authorized
+	// at the batch's origin.
+	signerAuthorized
+	// signerPending: matches only the latest (unfinalized) batcher — a rotation
+	// newer than our finalized view
+	signerPending
+)
+
+// authorizeSigner classifies batch.Signer(). It compares (no L1 call) against the
+// finalized-view batcher and authorizedAtOrigin (nil when the origin isn't
+// finalized in our view); only on a miss does it read the latest on-chain batcher.
+func (s *BatchStreamer[B]) authorizeSigner(ctx context.Context, batch B, authorizedAtOrigin []common.Address) signerAuthorization {
+	signer := batch.Signer()
+
+	if s.espressoBatcher != (common.Address{}) && signer == s.espressoBatcher {
+		return signerAuthorized
+	}
+	if slices.Contains(authorizedAtOrigin, signer) {
+		return signerAuthorized
+	}
+
+	// A rotation newer than our finalized view may still authorize this signer.
+	latestBatcher, err := s.BatchAuthenticatorCaller.EspressoBatcher(&bind.CallOpts{Context: ctx})
+	if err != nil {
+		s.Log.Warn("Failed to fetch the latest espresso batcher address, pending resync",
+			"batch", batch.Hash(), "signer", signer, "error", err)
+		return signerPending
+	}
+	if latestBatcher != (common.Address{}) && signer == latestBatcher {
+		s.Log.Info("Batch signed by pending (unfinalized) espresso batcher, awaiting L1 finality",
+			"batch", batch.Hash(), "signer", signer,
+			"espressoBatcher", s.espressoBatcher, "latestBatcher", latestBatcher)
+		return signerPending
+	}
+
+	// With no batcher reference at all we can't call the signer unauthorized; hold.
+	if s.espressoBatcher == (common.Address{}) && len(authorizedAtOrigin) == 0 && latestBatcher == (common.Address{}) {
+		return signerPending
+	}
+
+	return signerUnauthorized
+}
+
+// tryAdvanceFinalizedView pulls the node's finalized L1 block and, if it's newer
+// than our (driver-fed, possibly lagging) view, advances s.FinalizedL1 and
+// re-reads the batcher at that block. A no-op when the node hasn't moved past us.
+func (s *BatchStreamer[B]) tryAdvanceFinalizedView(ctx context.Context) {
+	finalized, err := s.RollupL1Client.FinalizedBlock(ctx)
+	if err != nil {
+		s.Log.Warn("Failed to refetch finalized L1 block", "error", err)
+		return
+	}
+	if finalized.Number <= s.FinalizedL1.Number {
+		return
+	}
+
+	s.Log.Info("Advancing lagging finalized L1 view",
+		"from", s.FinalizedL1.Number, "to", finalized.Number)
+	s.FinalizedL1 = finalized
+
+	// Re-read the batcher at the advanced view so we see any rotation we were missing.
+	espressoBatcher, err := s.BatchAuthenticatorCaller.EspressoBatcher(
+		&bind.CallOpts{Context: ctx, BlockNumber: new(big.Int).SetUint64(finalized.Number)})
+	if err != nil {
+		s.Log.Warn("Failed to refresh espresso batcher after advancing finalized view", "error", err)
+	} else if espressoBatcher != (common.Address{}) {
+		s.espressoBatcher = espressoBatcher
+	}
+}
+
 // CheckBatch checks the validity of the given batch against the finalized L1
 // block and the safe L1 origin.
 func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidity {
@@ -276,10 +356,20 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 	}
 	origin := (batch).L1Origin()
 
+	// If the origin outruns our finalized view and the signer isn't the batcher we
+	// know as of it, our driver-fed view may just be stale: pull the node's
+	// finalized head so a fresher view can reach the finalized-origin path below.
+	if origin.Number > s.FinalizedL1.Number && batch.Signer() != s.espressoBatcher {
+		s.tryAdvanceFinalizedView(ctx)
+	}
+
 	if origin.Number > s.FinalizedL1.Number {
-		// Drop batches not signed by the known Espresso batcher before they enter the buffer. This
-		// prevents a far-future origin from pinning headBatch as BatchUndecided indefinitely.
-		if s.espressoBatcher != (common.Address{}) && batch.Signer() != s.espressoBatcher {
+		// Origin unfinalized in our view: we can't verify its hash, so the best
+		// outcome is BatchUndecided. Drop only an unrecognized signer, to stop a
+		// far-future origin from pinning headBatch as undecided (buffer poisoning).
+		// authorizedAtOrigin is nil: no reliable historical lookup for an
+		// unfinalized origin.
+		if s.authorizeSigner(ctx, batch, nil) == signerUnauthorized {
 			s.Log.Info(DroppingBatchLogPrefix+" with unrecognized signer",
 				"signer", batch.Signer(), "espressoBatcher", s.espressoBatcher)
 			return BatchDrop
@@ -338,28 +428,16 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 		s.finalizedL1StateCache.Add(origin.Number, state)
 	}
 
-	// Accept the batch if it is signed either by the batcher authorized at its
-	// L1 origin or by the batcher currently authorized on-chain. The latter
-	// covers batcher rotations and origins that predate the first history entry,
-	// where the origin lookup would otherwise reject a batch from the current
-	// batcher.
-	matchesCurrentBatcher := s.espressoBatcher != (common.Address{}) && batch.Signer() == s.espressoBatcher
-	if !matchesCurrentBatcher && !slices.Contains(state.authorizedBatchers, batch.Signer()) {
-		// Check if its in unfinalized, if it is, dont drop it.
-		latestBatcher, err := s.BatchAuthenticatorCaller.EspressoBatcher(&bind.CallOpts{Context: ctx})
-		if err != nil {
-			s.Log.Warn("Failed to fetch the latest espresso batcher address, pending resync",
-				"batch", batch.Hash(), "signer", batch.Signer(), "error", err)
-			return BatchUndecided
-		}
-		if latestBatcher != (common.Address{}) && batch.Signer() == latestBatcher {
-			s.Log.Info("Batch signed by pending (unfinalized) espresso batcher, awaiting L1 finality",
-				"batch", batch.Hash(), "signer", batch.Signer(),
-				"espressoBatcher", s.espressoBatcher, "latestBatcher", latestBatcher)
-			return BatchUndecided
-		}
+	// Authorize the signer against the finalized-view batcher, the origin's
+	// authorized set, and (on a miss) the latest on-chain batcher.
+	switch s.authorizeSigner(ctx, batch, state.authorizedBatchers) {
+	case signerUnauthorized:
 		s.Log.Info(DroppingBatchLogPrefix+" with invalid espresso batcher", "batch", batch.Hash(), "signer", batch.Signer(), "espressoBatcher", s.espressoBatcher)
 		return BatchDrop
+	case signerPending:
+		return BatchUndecided
+	case signerAuthorized:
+		// Signer is recognized; fall through to the origin hash check.
 	}
 
 	if state.hash != origin.Hash {

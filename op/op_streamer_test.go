@@ -226,6 +226,9 @@ func (m *MockStreamerSource) AddEspressoTransactionData(height, namespace uint64
 var _ L1Client = (*MockStreamerSource)(nil)
 
 // L1 Client methods
+func (m *MockStreamerSource) FinalizedBlock(ctx context.Context) (eth.L1BlockRef, error) {
+	return m.FinalizedL1, nil
+}
 
 func (m *MockStreamerSource) HeaderHashByNumber(ctx context.Context, number *big.Int) (common.Hash, error) {
 	l1Ref := createL1BlockRef(number.Uint64())
@@ -1621,8 +1624,16 @@ func TestCheckBatchSignerPreFilter(t *testing.T) {
 	futureEpoch := uint64(9999999)
 	historicalEpoch := uint64(50)
 
-	t.Run("espressoBatcher zero: unknown signer with future origin is BatchUndecided not BatchDrop", func(t *testing.T) {
+	t.Run("espressoBatcher zero but chain has a batcher: unknown signer with future origin is BatchDrop", func(t *testing.T) {
 		_, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		streamer.FinalizedL1 = createL1BlockRef(100)
+
+		batch := makeBatch(futureEpoch, unknownSigner)
+		require.Equal(t, BatchValidity(BatchDrop), streamer.CheckBatch(ctx, batch))
+	})
+
+	t.Run("no batcher known anywhere: unknown signer with future origin is BatchUndecided", func(t *testing.T) {
+		_, streamer := setupStreamerTesting(42, common.Address{})
 		streamer.FinalizedL1 = createL1BlockRef(100)
 
 		batch := makeBatch(futureEpoch, unknownSigner)
@@ -1644,6 +1655,19 @@ func TestCheckBatchSignerPreFilter(t *testing.T) {
 		streamer.espressoBatcher = knownBatcher
 
 		batch := makeBatch(futureEpoch, knownBatcher)
+		require.Equal(t, BatchValidity(BatchUndecided), streamer.CheckBatch(ctx, batch))
+	})
+
+	t.Run("lagging finalized view: future origin signed by rotated-in (latest) batcher is BatchUndecided", func(t *testing.T) {
+		oldBatcher := common.HexToAddress("0x0000000000000000000000000000000000000011")
+		newBatcher := common.HexToAddress("0x0000000000000000000000000000000000000022")
+
+		state, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		streamer.FinalizedL1 = createL1BlockRef(100)
+		streamer.espressoBatcher = oldBatcher // finalized view predates the rotation
+		state.TeeBatcherAddr = newBatcher     // latest on-chain batcher (rotated in)
+
+		batch := makeBatch(futureEpoch, newBatcher)
 		require.Equal(t, BatchValidity(BatchUndecided), streamer.CheckBatch(ctx, batch))
 	})
 
@@ -1676,6 +1700,79 @@ func TestCheckBatchSignerPreFilter(t *testing.T) {
 		batch := makeBatch(futureEpoch, unknownSigner)
 		require.Equal(t, BatchValidity(BatchDrop), streamer.CheckBatch(ctx, batch))
 	})
+}
+
+// TestCheckBatchAdvancesLaggingFinalizedView verifies that when our finalized
+// view lags the node's finalized head, CheckBatch pulls the node's finalized
+// block, advances its view, and re-evaluates the batch instead of holding it.
+func TestCheckBatchAdvancesLaggingFinalizedView(t *testing.T) {
+	ctx := context.Background()
+	knownBatcher := batchAuthenticatorAddr // mock returns this for all batcher calls
+	unknownSigner := common.HexToAddress("0x000000000000000000000000000000000000dead")
+
+	makeBatch := func(epochNum uint64, signer common.Address) derivation.EspressoBatch {
+		return derivation.EspressoBatch{
+			BatchHeader: &geth_types.Header{Number: big.NewInt(2)},
+			Batch: derive.SingularBatch{
+				EpochNum:  rollup.Epoch(epochNum),
+				EpochHash: createHashFromHeight(epochNum),
+				Timestamp: 1,
+			},
+			L1InfoDeposit: geth_types.NewTx(&geth_types.DepositTx{}),
+			SignerAddress: signer,
+		}
+	}
+
+	t.Run("origin between lagging view and node finality is accepted after advancing", func(t *testing.T) {
+		state, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		streamer.FinalizedL1 = createL1BlockRef(100) // lagging driver-fed view
+		state.FinalizedL1 = createL1BlockRef(200)    // node's real finalized head
+
+		// Origin 150 is unfinalized in our stale view (Path A) but finalized once
+		// we catch up to 200 (Path B), where the known batcher's signature is
+		// verified against the origin hash.
+		batch := makeBatch(150, knownBatcher)
+		require.Equal(t, BatchValidity(BatchAccept), streamer.CheckBatch(ctx, batch))
+		require.Equal(t, uint64(200), streamer.FinalizedL1.Number)
+	})
+
+	t.Run("advancing does not rescue a genuinely unrecognized signer", func(t *testing.T) {
+		state, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		streamer.FinalizedL1 = createL1BlockRef(100)
+		state.FinalizedL1 = createL1BlockRef(200)
+
+		// After advancing to 200, origin 150 is finalized but the signer matches
+		// neither the origin batcher nor the latest, so it is dropped.
+		batch := makeBatch(150, unknownSigner)
+		require.Equal(t, BatchValidity(BatchDrop), streamer.CheckBatch(ctx, batch))
+		require.Equal(t, uint64(200), streamer.FinalizedL1.Number)
+	})
+
+	t.Run("no advance when node finalized head has not moved past our view", func(t *testing.T) {
+		state, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+		streamer.FinalizedL1 = createL1BlockRef(100)
+		state.FinalizedL1 = createL1BlockRef(100) // node hasn't moved past our view
+
+		// The refetch finds nothing newer, so the origin stays unfinalized. The
+		// signer matches the latest batcher, so we hold rather than drop.
+		batch := makeBatch(150, knownBatcher)
+		require.Equal(t, BatchValidity(BatchUndecided), streamer.CheckBatch(ctx, batch))
+		require.Equal(t, uint64(100), streamer.FinalizedL1.Number)
+	})
+}
+
+// TestRefreshDoesNotRegressFinalizedView verifies that Refresh never moves the
+// finalized view backwards, so a self-advanced view isn't clobbered by a lagging
+// driver-provided value.
+func TestRefreshDoesNotRegressFinalizedView(t *testing.T) {
+	ctx := context.Background()
+	state, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+	streamer.FinalizedL1 = createL1BlockRef(200)
+
+	// Driver reports a staler finalized block than what we already hold.
+	err := streamer.Refresh(ctx, createL1BlockRef(100), state.SafeL2.Number, state.SafeL2.L1Origin)
+	require.NoError(t, err)
+	require.Equal(t, uint64(200), streamer.FinalizedL1.Number)
 }
 
 // TestUpdateReturnsErrorOnMaxUint64BlockHeight verifies that Update returns an error
