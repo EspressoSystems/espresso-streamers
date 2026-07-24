@@ -32,6 +32,7 @@ type Batch interface {
 	Header() *types.Header
 	Hash() common.Hash
 	Signer() common.Address
+	L1Head() uint64
 }
 
 type BatchBuffer[B Batch] struct {
