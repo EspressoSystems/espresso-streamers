@@ -205,7 +205,7 @@ func (s *BatchStreamer[B]) Reset() {
 	s.headBatch = nil
 	s.skipPos = math.MaxUint64
 	s.BatchBuffer.Clear()
-	// Cached batcher lookups were read at latest (non-finalized) L1.
+	// Cached batcher lookups were read at non-finalized L1 blocks.
 	// An L1 reorg can change them, so drop them on reset.
 	s.batcherAtL1HeadCache.Purge()
 }
@@ -272,14 +272,17 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 	}
 	origin := (batch).L1Origin()
 
-	// Look up the batcher authorized at l1Head. Read at latest (not finalized) so
-	// a rotation is seen as soon as it lands on L1, matching the contract's own
-	// authority check; reorgs are handled by Reset. Checked before the origin
-	// checks so an unrecognized signer is dropped, not left pinning the buffer.
+	// Look up the batcher authorized at l1Head. The read is pinned to l1Head rather
+	// than latest for two reasons: it reflects the authority set as of that L1 block
+	// (not whatever our client happens to have synced), and it fails closed when the
+	// L1 client lags behind l1Head — the node cannot serve that state, so we return
+	// BatchUndecided below and retry instead of silently answering from an older
+	// state and dropping a validly signed batch. Rotations are still seen as soon as
+	// they land on L1 (no finality wait)
 	authorizedBatcher, ok := s.batcherAtL1HeadCache.Get(l1Head)
 	if !ok {
 		batcher, err := s.BatchAuthenticatorCaller.EspressoBatcherAtBlock(
-			&bind.CallOpts{Context: ctx},
+			&bind.CallOpts{Context: ctx, BlockNumber: new(big.Int).SetUint64(l1Head)},
 			l1Head,
 		)
 		if err != nil {
