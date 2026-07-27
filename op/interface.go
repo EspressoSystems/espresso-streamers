@@ -53,7 +53,7 @@ type EspressoStreamer[B Batch] interface {
 
 	// UnmarshalBatch is a convenience method that allows the caller to
 	// attempt to unmarshal a batch from the provided byte slice.
-	UnmarshalBatch(b []byte, l1Head uint64) (*B, error)
+	UnmarshalBatch(b []byte, l1Finalized uint64) (*B, error)
 
 	// HasNext checks to see if there are any batches left to read in the
 	// streamer.

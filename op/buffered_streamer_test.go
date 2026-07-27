@@ -49,8 +49,8 @@ func (b BatchMock) Signer() common.Address {
 	return common.Address{}
 }
 
-// L1Head implements op.Batch
-func (b BatchMock) L1Head() uint64 {
+// L1Finalized implements op.Batch
+func (b BatchMock) L1Finalized() uint64 {
 	return 0
 }
 
@@ -84,9 +84,9 @@ type MockStreamer[B espresso.Batch] struct {
 }
 
 // NOTE: MockStreamer no longer asserts against espresso.EspressoStreamer: the
-// external optimism/espresso package still has the pre-l1Head UnmarshalBatch
+// external optimism/espresso package still has the pre-l1Finalized UnmarshalBatch
 // signature ([]byte), which this MockStreamer no longer matches. Once the
-// integration repo picks up the l1Head change, this assertion can return.
+// integration repo picks up the l1Finalized change, this assertion can return.
 var _ op.EspressoStreamer[BatchMock] = (*MockStreamer[BatchMock])(nil)
 
 // Update implements espresso.EspressoStreamer
@@ -121,9 +121,9 @@ func (m *MockStreamer[B]) Reset() {
 }
 
 // UnmarshalBatch implements espresso.EspressoStreamer
-func (m *MockStreamer[B]) UnmarshalBatch(b []byte, l1Head uint64) (*B, error) {
+func (m *MockStreamer[B]) UnmarshalBatch(b []byte, l1Finalized uint64) (*B, error) {
 	panic("unimplemented")
-	// return m.unmarshalBatch(b, l1Head)
+	// return m.unmarshalBatch(b, l1Finalized)
 }
 
 // HasNext implements espresso.EspressoStreamer

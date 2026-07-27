@@ -131,10 +131,10 @@ type MockStreamerSource struct {
 	// resolves to TeeBatcherAddr (the common case). Used to simulate batcher
 	// rotations keyed by L1 block.
 	EspressoBatcherByBlock func(l1Block uint64) common.Address
-	// HotShotL1Heads overrides the L1 head reported in the HotShot header for a
-	// given HotShot block height in FetchHeadersByRange. Heights not present
-	// default to the block height itself.
-	HotShotL1Heads map[uint64]uint64
+	// HotShotL1Finalized overrides the finalized L1 block reported in the HotShot
+	// header for a given HotShot block height in FetchHeadersByRange. Heights not
+	// present default to the block height itself.
+	HotShotL1Finalized map[uint64]uint64
 }
 
 // FetchNamespaceTransactionsInRange implements EspressoClient.
@@ -169,20 +169,24 @@ func (m *MockStreamerSource) FetchNamespaceTransactionsInRange(ctx context.Conte
 }
 
 // FetchHeadersByRange implements EspressoClient. It returns a HotShot header for
-// each height in [fromHeight, toHeight] carrying the height and an L1 head (from
-// HotShotL1Heads, defaulting to the height itself).
+// each height in [fromHeight, toHeight] carrying the height and a finalized L1
+// block (from HotShotL1Finalized, defaulting to the height itself).
 func (m *MockStreamerSource) FetchHeadersByRange(ctx context.Context, fromHeight uint64, toHeight uint64) ([]espressoCommon.HeaderImpl, error) {
 	if fromHeight > toHeight {
 		return nil, ErrNotFound
 	}
 	var headers []espressoCommon.HeaderImpl
 	for height := fromHeight; height <= toHeight; height++ {
-		l1Head := height
-		if v, ok := m.HotShotL1Heads[height]; ok {
-			l1Head = v
+		l1Finalized := height
+		if v, ok := m.HotShotL1Finalized[height]; ok {
+			l1Finalized = v
 		}
 		headers = append(headers, espressoCommon.HeaderImpl{
-			Header: &v0_3.Header{Height: height, L1Head: l1Head},
+			Header: &v0_3.Header{
+				Height:      height,
+				L1Head:      height,
+				L1Finalized: &espressoCommon.L1BlockInfo{Number: l1Finalized},
+			},
 		})
 	}
 	return headers, nil
@@ -1755,16 +1759,16 @@ func TestDuplicateHeadBatchDropped(t *testing.T) {
 	require.Equal(t, uint64(2), streamer.Next(ctx).Number())
 }
 
-// TestCheckBatchAuthorizesL1HeadBatcher covers the batcher authorization in
+// TestCheckBatchAuthorizesL1FinalizedBatcher covers the batcher authorization in
 // CheckBatch: a batch is accepted only if its signer is the batcher authorized
-// at the HotShot header's L1 head, and dropped otherwise.
-func TestCheckBatchAuthorizesL1HeadBatcher(t *testing.T) {
+// at the HotShot header's finalized L1 block, and dropped otherwise.
+func TestCheckBatchAuthorizesL1FinalizedBatcher(t *testing.T) {
 	oldBatcher := common.HexToAddress("0x1111111111111111111111111111111111111111")
 	newBatcher := common.HexToAddress("0x2222222222222222222222222222222222222222")
 	otherAddr := common.HexToAddress("0x3333333333333333333333333333333333333333")
 
 	const originNumber = uint64(50)
-	const l1HeadNumber = uint64(80)
+	const l1FinalizedNumber = uint64(80)
 	originHash := common.HexToHash("0xabc123")
 
 	// A batch at L2 number 10 whose L1 origin is (originNumber, originHash).
@@ -1779,46 +1783,46 @@ func TestCheckBatchAuthorizesL1HeadBatcher(t *testing.T) {
 	}
 
 	cases := []struct {
-		name          string
-		l1HeadBatcher common.Address
-		signer        common.Address
-		want          BatchValidity
+		name               string
+		l1FinalizedBatcher common.Address
+		signer             common.Address
+		want               BatchValidity
 	}{
 		{
-			name:          "signer matches l1-head batcher: accepted",
-			l1HeadBatcher: oldBatcher,
-			signer:        oldBatcher,
-			want:          BatchAccept,
+			name:               "signer matches l1-head batcher: accepted",
+			l1FinalizedBatcher: oldBatcher,
+			signer:             oldBatcher,
+			want:               BatchAccept,
 		},
 		{
-			name:          "signer matches post-rotation l1-head batcher: accepted",
-			l1HeadBatcher: newBatcher,
-			signer:        newBatcher,
-			want:          BatchAccept,
+			name:               "signer matches post-rotation l1-head batcher: accepted",
+			l1FinalizedBatcher: newBatcher,
+			signer:             newBatcher,
+			want:               BatchAccept,
 		},
 		{
-			name:          "signer is a different (e.g. rotated-out) batcher: dropped",
-			l1HeadBatcher: newBatcher,
-			signer:        oldBatcher,
-			want:          BatchDrop,
+			name:               "signer is a different (e.g. rotated-out) batcher: dropped",
+			l1FinalizedBatcher: newBatcher,
+			signer:             oldBatcher,
+			want:               BatchDrop,
 		},
 		{
-			name:          "unknown signer: dropped",
-			l1HeadBatcher: oldBatcher,
-			signer:        otherAddr,
-			want:          BatchDrop,
+			name:               "unknown signer: dropped",
+			l1FinalizedBatcher: oldBatcher,
+			signer:             otherAddr,
+			want:               BatchDrop,
 		},
 		{
-			name:          "no batcher at l1 head: dropped",
-			l1HeadBatcher: common.Address{},
-			signer:        oldBatcher,
-			want:          BatchDrop,
+			name:               "no batcher at l1 head: dropped",
+			l1FinalizedBatcher: common.Address{},
+			signer:             oldBatcher,
+			want:               BatchDrop,
 		},
 		{
-			name:          "zero signer: dropped",
-			l1HeadBatcher: oldBatcher,
-			signer:        common.Address{},
-			want:          BatchDrop,
+			name:               "zero signer: dropped",
+			l1FinalizedBatcher: oldBatcher,
+			signer:             common.Address{},
+			want:               BatchDrop,
 		},
 	}
 
@@ -1829,31 +1833,31 @@ func TestCheckBatchAuthorizesL1HeadBatcher(t *testing.T) {
 			streamer.nextBatchPos = 1
 			// Seed the caches so CheckBatch resolves the L1-head batcher and the
 			// origin hash without hitting the mock L1 client or BatchAuthenticator.
-			streamer.batcherAtL1HeadCache.Add(l1HeadNumber, tc.l1HeadBatcher)
+			streamer.batcherAtL1FinalizedCache.Add(l1FinalizedNumber, tc.l1FinalizedBatcher)
 			streamer.finalizedL1StateCache.Add(originNumber, l1State{hash: originHash})
 
 			batch := makeBatch(tc.signer)
-			batch.SetL1Head(l1HeadNumber)
+			batch.SetL1Finalized(l1FinalizedNumber)
 			got := streamer.CheckBatch(context.Background(), batch)
 			require.Equal(t, tc.want, got)
 		})
 	}
 }
 
-// TestCheckBatchAuthorizesAgainstL1HeadNotOrigin is a regression test for the
+// TestCheckBatchAuthorizesAgainstL1FinalizedNotOrigin is a regression test for the
 // key-rotation authorization bug: a rotated-out batcher key must not be able to
 // re-authorize itself by declaring an old L1 origin from the window in which it
-// was authorized. CheckBatch keys authorization to the HotShot header's L1 head
-// — which the key holder cannot backdate — not the batch's self-declared origin.
-func TestCheckBatchAuthorizesAgainstL1HeadNotOrigin(t *testing.T) {
+// was authorized. CheckBatch keys authorization to the HotShot header's finalized
+// L1 block — which the key holder cannot backdate — not the self-declared origin.
+func TestCheckBatchAuthorizesAgainstL1FinalizedNotOrigin(t *testing.T) {
 	ctx := context.Background()
 
 	oldKey := common.HexToAddress("0x1111111111111111111111111111111111111111")
 	newKey := common.HexToAddress("0x2222222222222222222222222222222222222222")
 
-	const rotationBlock = uint64(100) // oldKey -> newKey rotation on L1
-	const oldOrigin = uint64(50)      // an L1 block where oldKey was authorized
-	const recentL1Head = uint64(150)  // where newKey is authorized
+	const rotationBlock = uint64(100)     // oldKey -> newKey rotation on L1
+	const oldOrigin = uint64(50)          // an L1 block where oldKey was authorized
+	const recentL1Finalized = uint64(150) // where newKey is authorized
 
 	state, streamer := setupStreamerTesting(42, newKey)
 	streamer.FinalizedL1 = createL1BlockRef(200)
@@ -1876,17 +1880,17 @@ func TestCheckBatchAuthorizesAgainstL1HeadNotOrigin(t *testing.T) {
 	})
 	batch.SignerAddress = oldKey
 
-	// Authorized against the containing HotShot block's (recent) L1 head, oldKey
-	// is no longer the batcher, so the forged batch is dropped.
-	batch.SetL1Head(recentL1Head)
+	// Authorized against the containing HotShot block's (recent) finalized L1
+	// block, oldKey is no longer the batcher, so the forged batch is dropped.
+	batch.SetL1Finalized(recentL1Finalized)
 	require.Equal(t, BatchValidity(BatchDrop), streamer.CheckBatch(ctx, *batch),
-		"a batch from a rotated-out key must be dropped when authorized against a recent L1 head")
+		"a batch from a rotated-out key must be dropped when authorized against a recent finalized L1 block")
 
-	// Contrast: if the batch's L1 head were the old origin (as a self-declared
+	// Contrast: if the batch's anchor were the old origin (as a self-declared
 	// origin would be), oldKey resolves as authorized and the forgery is accepted
-	// — the vulnerability this fix closes by sourcing the L1 head from the
+	// — the vulnerability this fix closes by sourcing the anchor from the
 	// consensus-verified HotShot header instead.
-	batch.SetL1Head(oldOrigin)
+	batch.SetL1Finalized(oldOrigin)
 	require.Equal(t, BatchValidity(BatchAccept), streamer.CheckBatch(ctx, *batch),
-		"authorizing against the old L1 head would accept the forged batch (the vulnerability)")
+		"authorizing against the old origin would accept the forged batch (the vulnerability)")
 }

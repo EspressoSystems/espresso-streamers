@@ -216,7 +216,7 @@ func (b *BufferedEspressoStreamer[B]) Peek(ctx context.Context) *B {
 }
 
 // UnmarshalBatch implements EspressoStreamerIFace
-func (b *BufferedEspressoStreamer[B]) UnmarshalBatch(data []byte, l1Head uint64) (*B, error) {
+func (b *BufferedEspressoStreamer[B]) UnmarshalBatch(data []byte, l1Finalized uint64) (*B, error) {
 	// Delegate the unmarshalling to the underlying streamer
-	return b.streamer.UnmarshalBatch(data, l1Head)
+	return b.streamer.UnmarshalBatch(data, l1Finalized)
 }

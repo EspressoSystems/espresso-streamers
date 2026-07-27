@@ -125,9 +125,10 @@ type BatchStreamer[B Batch] struct {
 
 	// Cache for finalized L1 block hashes, keyed by L1 origin block number.
 	finalizedL1StateCache *simplelru.LRU[uint64, l1State]
-	// Authorized batcher keyed by HotShot L1 head, to avoid re-querying.
-	batcherAtL1HeadCache *simplelru.LRU[uint64, common.Address]
-	unmarshalBatch       func(data []byte, l1Head uint64) (*B, error)
+	// Authorized batcher keyed by the HotShot header's finalized L1 block, to
+	// avoid re-querying.
+	batcherAtL1FinalizedCache *simplelru.LRU[uint64, common.Address]
+	unmarshalBatch            func(data []byte, l1Finalized uint64) (*B, error)
 
 	// track batch timestamp controls whether the streamer will
 	// record the timestamp at which Hotshot finalized a given batch
@@ -149,7 +150,7 @@ func NewEspressoStreamer[B Batch](
 	espressoClient EspressoClient,
 	lightClient LightClientCallerInterface,
 	log log.Logger,
-	unmarshalBatch func(data []byte, l1Head uint64) (*B, error),
+	unmarshalBatch func(data []byte, l1Finalized uint64) (*B, error),
 	originHotShotPos uint64,
 	originBatchPos uint64,
 	batchAuthenticatorAddress common.Address,
@@ -160,7 +161,7 @@ func NewEspressoStreamer[B Batch](
 	}
 
 	finalizedL1StateCache, _ := simplelru.NewLRU[uint64, l1State](1000, nil)
-	batcherAtL1HeadCache, _ := simplelru.NewLRU[uint64, common.Address](1000, nil)
+	batcherAtL1FinalizedCache, _ := simplelru.NewLRU[uint64, common.Address](1000, nil)
 
 	batchAuthenticatorCaller, err := bindings.NewBatchAuthenticatorCaller(batchAuthenticatorAddress, l1Client)
 	if err != nil {
@@ -183,17 +184,17 @@ func NewEspressoStreamer[B Batch](
 		// Internally, nextBatchPos is the position of the batch we are to give out next, hence the +1
 		nextBatchPos: originBatchPos + 1,
 		// fallbackBatchPos represents the last safe batch, so no +1
-		fallbackBatchPos:      originBatchPos,
-		BatchBuffer:           NewBatchBuffer[B](BatchBufferCapacity),
-		finalizedL1StateCache: finalizedL1StateCache,
-		batcherAtL1HeadCache:  batcherAtL1HeadCache,
-		unmarshalBatch:        unmarshalBatch,
-		originHotShotPos:      originHotShotPos,
-		fallbackHotShotPos:    originHotShotPos,
-		hotShotPos:            originHotShotPos,
-		skipPos:               math.MaxUint64,
-		trackBatchTimestamp:   trackBatchTimestamp,
-		batchTimestamps:       batchTimestamps,
+		fallbackBatchPos:          originBatchPos,
+		BatchBuffer:               NewBatchBuffer[B](BatchBufferCapacity),
+		finalizedL1StateCache:     finalizedL1StateCache,
+		batcherAtL1FinalizedCache: batcherAtL1FinalizedCache,
+		unmarshalBatch:            unmarshalBatch,
+		originHotShotPos:          originHotShotPos,
+		fallbackHotShotPos:        originHotShotPos,
+		hotShotPos:                originHotShotPos,
+		skipPos:                   math.MaxUint64,
+		trackBatchTimestamp:       trackBatchTimestamp,
+		batchTimestamps:           batchTimestamps,
 	}, nil
 }
 
@@ -205,9 +206,6 @@ func (s *BatchStreamer[B]) Reset() {
 	s.headBatch = nil
 	s.skipPos = math.MaxUint64
 	s.BatchBuffer.Clear()
-	// Cached batcher lookups were read at non-finalized L1 blocks.
-	// An L1 reorg can change them, so drop them on reset.
-	s.batcherAtL1HeadCache.Purge()
 }
 
 // RefreshSafeL1Origin is a convenience method that allows us to update the
@@ -252,11 +250,10 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 }
 
 // CheckBatch validates a batch: its signer must be the batcher authorized at the
-// batch's l1Head (the L1 head of the HotShot block that carried it). Keying off
-// the consensus-verified l1Head rather than the batch's self-declared L1 origin
-// stops a rotated-out key from re-authorizing itself with a stale origin.
+// batch's l1Finalized (the finalized L1 block reported by the HotShot header that
+// carried it).
 func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidity {
-	l1Head := batch.L1Head()
+	l1Finalized := batch.L1Finalized()
 
 	// Check cheaply whether this batch has already been buffered or finalized before
 	// making any L1 RPC calls.
@@ -272,32 +269,26 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 	}
 	origin := (batch).L1Origin()
 
-	// Look up the batcher authorized at l1Head. The read is pinned to l1Head rather
-	// than latest for two reasons: it reflects the authority set as of that L1 block
-	// (not whatever our client happens to have synced), and it fails closed when the
-	// L1 client lags behind l1Head — the node cannot serve that state, so we return
-	// BatchUndecided below and retry instead of silently answering from an older
-	// state and dropping a validly signed batch. Rotations are still seen as soon as
-	// they land on L1 (no finality wait)
-	authorizedBatcher, ok := s.batcherAtL1HeadCache.Get(l1Head)
+	// Look up the batcher authorized at l1Finalized which was read from Espresso Headers
+	authorizedBatcher, ok := s.batcherAtL1FinalizedCache.Get(l1Finalized)
 	if !ok {
 		batcher, err := s.BatchAuthenticatorCaller.EspressoBatcherAtBlock(
-			&bind.CallOpts{Context: ctx, BlockNumber: new(big.Int).SetUint64(l1Head)},
-			l1Head,
+			&bind.CallOpts{Context: ctx},
+			l1Finalized,
 		)
 		if err != nil {
 			s.Log.Warn("Failed to fetch the espresso batcher address, pending resync",
-				"l1Head", l1Head,
+				"l1Finalized", l1Finalized,
 				"error", err)
 			return BatchUndecided
 		}
 		authorizedBatcher = batcher
-		s.batcherAtL1HeadCache.Add(l1Head, batcher)
+		s.batcherAtL1FinalizedCache.Add(l1Finalized, batcher)
 	}
 
 	if authorizedBatcher == (common.Address{}) || batch.Signer() != authorizedBatcher {
 		s.Log.Info(DroppingBatchLogPrefix+" with invalid espresso batcher",
-			"batch", batch.Hash(), "signer", batch.Signer(), "l1Head", l1Head, "authorizedBatcher", authorizedBatcher)
+			"batch", batch.Hash(), "signer", batch.Signer(), "l1Finalized", l1Finalized, "authorizedBatcher", authorizedBatcher)
 		return BatchDrop
 	}
 
@@ -575,9 +566,19 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 		}
 		// Safe to index by position: verified above that headers[i] has height
 		// blockPos and that the counts match.
-		l1Head := headers[i].Header.GetL1Head()
+		//
+		// Consensus never lets this go backwards, so it is nil only before the chain's
+		// first observed L1 finality. Guarded because it is a pointer; if it fires,
+		// hotShotPos has already advanced and the block's batches are lost.
+		l1FinalizedInfo := headers[i].Header.GetL1Finalized()
+		if l1FinalizedInfo == nil {
+			s.Log.Error("HotShot header reports no finalized L1 block, skipping its transactions",
+				"hotShotHeight", blockPos)
+			continue
+		}
+		l1Finalized := l1FinalizedInfo.Number
 		for _, txn := range namespaceBlock.Transactions {
-			err := s.processEspressoTransaction(ctx, txn.Payload, headerTimestamp, l1Head)
+			err := s.processEspressoTransaction(ctx, txn.Payload, headerTimestamp, l1Finalized)
 			if errors.Is(err, ErrAtCapacity) {
 				// Record one block before the failing block so that after rewinding
 				// hotShotPos to skipPos, the next computeEspressoBlockHeightsRange
@@ -597,8 +598,8 @@ func (s *BatchStreamer[B]) fetchHotShotRange(ctx context.Context, start, finish 
 // processEspressoTransaction is a helper method that encapsulates the logic of
 // processing batches from the transactions in a block fetched from Espresso.
 // It will return an error if the transaction contains a valid batch, but the buffer is full.
-func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, transaction espressoCommon.Bytes, hotshotTimestamp uint64, l1Head uint64) error {
-	batch, err := s.UnmarshalBatch(transaction, l1Head)
+func (s *BatchStreamer[B]) processEspressoTransaction(ctx context.Context, transaction espressoCommon.Bytes, hotshotTimestamp uint64, l1Finalized uint64) error {
+	batch, err := s.UnmarshalBatch(transaction, l1Finalized)
 	if err != nil {
 		s.Log.Warn(DroppingBatchLogPrefix+" with invalid transaction data", "error", err)
 		return nil
@@ -792,6 +793,6 @@ func (s *BatchStreamer[B]) GetFallbackHotshotPos() uint64 {
 }
 
 // UnmarshalBatch implements EspressoStreamerIFace
-func (s *BatchStreamer[B]) UnmarshalBatch(b []byte, l1Head uint64) (*B, error) {
-	return s.unmarshalBatch(b, l1Head)
+func (s *BatchStreamer[B]) UnmarshalBatch(b []byte, l1Finalized uint64) (*B, error) {
+	return s.unmarshalBatch(b, l1Finalized)
 }

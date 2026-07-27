@@ -23,7 +23,7 @@ type EspressoBatch struct {
 	Batch         derive.SingularBatch
 	L1InfoDeposit *types.Transaction
 	SignerAddress common.Address
-	l1Head        uint64
+	l1Finalized   uint64
 }
 
 func (b EspressoBatch) Number() uint64 {
@@ -47,12 +47,12 @@ func (b EspressoBatch) Hash() common.Hash {
 	return hash
 }
 
-func (b EspressoBatch) L1Head() uint64 {
-	return b.l1Head
+func (b EspressoBatch) L1Finalized() uint64 {
+	return b.l1Finalized
 }
 
-func (b *EspressoBatch) SetL1Head(l1Head uint64) {
-	b.l1Head = l1Head
+func (b *EspressoBatch) SetL1Finalized(l1Finalized uint64) {
+	b.l1Finalized = l1Finalized
 }
 
 func (b *EspressoBatch) ToEspressoTransaction(ctx context.Context, namespace uint64, signer opCrypto.ChainSigner) (*espressoCommon.Transaction, error) {
@@ -100,13 +100,13 @@ func BlockToEspressoBatch(rollupCfg *rollup.Config, block *types.Block) (*Espres
 // unmarshal an Espresso transaction into an EspressoBatch.
 // The signer address is recovered from the signature and stored on the batch
 // for later verification in CheckBatch (two-phase verification).
-func CreateEspressoBatchUnmarshaler() func(data []byte, l1Head uint64) (*EspressoBatch, error) {
-	return func(data []byte, l1Head uint64) (*EspressoBatch, error) {
-		return UnmarshalEspressoTransaction(data, l1Head)
+func CreateEspressoBatchUnmarshaler() func(data []byte, l1Finalized uint64) (*EspressoBatch, error) {
+	return func(data []byte, l1Finalized uint64) (*EspressoBatch, error) {
+		return UnmarshalEspressoTransaction(data, l1Finalized)
 	}
 }
 
-func UnmarshalEspressoTransaction(data []byte, l1Head uint64) (*EspressoBatch, error) {
+func UnmarshalEspressoTransaction(data []byte, l1Finalized uint64) (*EspressoBatch, error) {
 	if len(data) < crypto.SignatureLength {
 		return nil, fmt.Errorf("transaction data too short: %d bytes, need at least %d", len(data), crypto.SignatureLength)
 	}
@@ -137,7 +137,7 @@ func UnmarshalEspressoTransaction(data []byte, l1Head uint64) (*EspressoBatch, e
 	if batch.L1InfoDeposit == nil {
 		return nil, fmt.Errorf("batch is missing the L1 info deposit transaction")
 	}
-	batch.l1Head = l1Head
+	batch.l1Finalized = l1Finalized
 
 	return &batch, nil
 }

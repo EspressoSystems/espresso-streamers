@@ -39,7 +39,7 @@ func (m mockBatch) Signer() common.Address {
 	return common.Address{}
 }
 
-func (m mockBatch) L1Head() uint64 {
+func (m mockBatch) L1Finalized() uint64 {
 	return 0
 }
 
