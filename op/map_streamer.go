@@ -138,51 +138,58 @@ func (s *Streamer) Start(ctx context.Context) error {
 	s.cancel = cancel
 	s.done = done
 
+	s.logger.Info("espresso streamer started", "hotShotPos", s.hotShotPos, "pollInterval", s.pollInterval)
+
 	go func() {
 		defer close(done)
 		s.poll(ctx)
 	}()
-
-	s.logger.Info("espresso streamer started", "hotShotPos", s.hotShotPos, "pollInterval", s.pollInterval)
 	return nil
 }
 
-// Stop cancels the poll loop and blocks until it has returned
+// Stop cancels the poll loop and blocks until it has returned.
 func (s *Streamer) Stop() {
 	s.lifecycleMu.Lock()
-	cancel, done := s.cancel, s.done
-	s.cancel, s.done = nil, nil
-	s.lifecycleMu.Unlock()
-
-	if cancel == nil {
+	defer s.lifecycleMu.Unlock()
+	if s.cancel == nil {
 		return
 	}
-	cancel()
-	<-done
+
+	s.cancel()
+	<-s.done
+	s.cancel, s.done = nil, nil
+
+	// Safe to read hotShotPos: closing done happens after the poll loop's last write.
 	s.logger.Info("espresso streamer stopped", "hotShotPos", s.hotShotPos)
 }
 
 // Peek returns the batch extending the tip the streamer is tracking, or nil if
 // there is none or it is not yet valid.
+//
+// Several batches can compete for the same slot with the same parent hash, so a
+// batch that resolves to BatchDrop is evicted and the next candidate is considered.
 func (s *Streamer) Peek(ctx context.Context) *derivation.EspressoBatch {
-	batch := s.store.peek()
-	if batch == nil {
+	for {
+		batch := s.store.peek()
+		if batch == nil {
+			return nil
+		}
+		if BatchValidity(batch.Validity()) == BatchAccept {
+			return batch
+		}
+
+		// Undecided: retry the check that was previously blocked on L1 state.
+		validity := s.checkBatch(ctx, batch)
+		batch.SetValidity(uint8(validity))
+		switch validity {
+		case BatchAccept:
+			return batch
+		case BatchDrop:
+			s.store.remove(batch)
+			continue
+		}
 		return nil
 	}
-	if BatchValidity(batch.Validity()) == BatchAccept {
-		return batch
-	}
-
-	// Undecided: retry the check that was previously blocked on L1 state.
-	validity := s.checkBatch(ctx, batch)
-	batch.SetValidity(uint8(validity))
-	switch validity {
-	case BatchAccept:
-		return batch
-	case BatchDrop:
-		s.store.remove(batch)
-	}
-	return nil
 }
 
 func (s *Streamer) AdvancePosition() {
