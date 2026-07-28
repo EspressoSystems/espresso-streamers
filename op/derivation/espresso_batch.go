@@ -24,6 +24,7 @@ type EspressoBatch struct {
 	L1InfoDeposit *types.Transaction
 	SignerAddress common.Address
 	l1Finalized   uint64
+	validity      uint8
 }
 
 func (b EspressoBatch) Number() uint64 {
@@ -53,6 +54,14 @@ func (b EspressoBatch) L1Finalized() uint64 {
 
 func (b *EspressoBatch) SetL1Finalized(l1Finalized uint64) {
 	b.l1Finalized = l1Finalized
+}
+
+func (b EspressoBatch) Validity() uint8 {
+	return b.validity
+}
+
+func (b *EspressoBatch) SetValidity(validity uint8) {
+	b.validity = validity
 }
 
 func (b *EspressoBatch) ToEspressoTransaction(ctx context.Context, namespace uint64, signer opCrypto.ChainSigner) (*espressoCommon.Transaction, error) {
