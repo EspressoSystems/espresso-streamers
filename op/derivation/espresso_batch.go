@@ -23,45 +23,22 @@ type EspressoBatch struct {
 	Batch         derive.SingularBatch
 	L1InfoDeposit *types.Transaction
 	SignerAddress common.Address
-	l1Finalized   uint64
-	validity      uint8
+	// L1Finalized and Validity are attached locally after decoding
+	L1Finalized uint64 `rlp:"-"`
+	Validity    uint8  `rlp:"-"`
 }
 
 func (b EspressoBatch) Number() uint64 {
 	return b.BatchHeader.Number.Uint64()
 }
 
-func (b EspressoBatch) Signer() common.Address {
-	return b.SignerAddress
-}
-
 func (b EspressoBatch) L1Origin() eth.BlockID {
 	return b.Batch.Epoch()
-}
-
-func (b EspressoBatch) Header() *types.Header {
-	return b.BatchHeader
 }
 
 func (b EspressoBatch) Hash() common.Hash {
 	hash := crypto.Keccak256Hash(b.BatchHeader.Hash().Bytes(), b.L1InfoDeposit.Hash().Bytes())
 	return hash
-}
-
-func (b EspressoBatch) L1Finalized() uint64 {
-	return b.l1Finalized
-}
-
-func (b *EspressoBatch) SetL1Finalized(l1Finalized uint64) {
-	b.l1Finalized = l1Finalized
-}
-
-func (b EspressoBatch) Validity() uint8 {
-	return b.validity
-}
-
-func (b *EspressoBatch) SetValidity(validity uint8) {
-	b.validity = validity
 }
 
 func (b *EspressoBatch) ToEspressoTransaction(ctx context.Context, namespace uint64, signer opCrypto.ChainSigner) (*espressoCommon.Transaction, error) {
@@ -146,7 +123,7 @@ func UnmarshalEspressoTransaction(data []byte, l1Finalized uint64) (*EspressoBat
 	if batch.L1InfoDeposit == nil {
 		return nil, fmt.Errorf("batch is missing the L1 info deposit transaction")
 	}
-	batch.l1Finalized = l1Finalized
+	batch.L1Finalized = l1Finalized
 
 	return &batch, nil
 }

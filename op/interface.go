@@ -19,8 +19,8 @@ const (
 	BatchAccept
 	// BatchUndecided indicates we are lacking L1 information until we can proceed batch filtering
 	BatchUndecided
-	// BatchPast indicates that the batch is from the past, i.e. its timestamp is smaller or equal
-	// to the safe head's timestamp.
+	// BatchPast indicates that the batch is at or below the finalized L2 head, so it has
+	// already been derived and there is nothing left to do with it.
 	BatchPast
 )
 

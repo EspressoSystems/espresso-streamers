@@ -168,13 +168,13 @@ func (s *Streamer) Peek(ctx context.Context) *derivation.EspressoBatch {
 		if batch == nil {
 			return nil
 		}
-		if BatchValidity(batch.Validity()) == BatchAccept {
+		if BatchValidity(batch.Validity) == BatchAccept {
 			return batch
 		}
 
 		// Undecided: retry the check that was previously blocked on L1 state.
 		validity := s.checkBatch(ctx, batch)
-		batch.SetValidity(uint8(validity))
+		batch.Validity = uint8(validity)
 		switch validity {
 		case BatchAccept:
 			return batch
@@ -336,19 +336,25 @@ func (s *Streamer) process(ctx context.Context, hotShotHeight uint64, l1Finalize
 	case BatchDrop:
 		return
 	case BatchPast:
-		s.logger.Info("Batch already processed. Skipping", "batch", batch.Number(), "hash", batch.Header().Hash())
+		s.logger.Info("Batch already processed. Skipping", "batch", batch.Number(), "hash", batch.BatchHeader.Hash())
 		return
 	case BatchUndecided:
 		s.logger.Warn("Inserting undecided batch", "batch", batch.Hash())
 	case BatchAccept:
 	}
-	batch.SetValidity(uint8(validity))
+	batch.Validity = uint8(validity)
 	s.store.insert(batch)
 }
 
 // checkBatch verifies the batches l1 origin is finalized, and the correct signer against the contract
 func (s *Streamer) checkBatch(ctx context.Context, batch *derivation.EspressoBatch) BatchValidity {
-	l1Finalized := batch.L1Finalized()
+	// A batch at or below the finalized L2 head has already been derived, so there is
+	// nothing to do with it.
+	if batch.Number() <= s.store.finalizedL2() {
+		return BatchPast
+	}
+
+	l1Finalized := batch.L1Finalized
 
 	// Look up the batcher authorized at l1Finalized which is read from Espresso Header
 	authorizedBatcher, ok := s.batcherAtL1FinalizedCache.Get(l1Finalized)
@@ -366,9 +372,9 @@ func (s *Streamer) checkBatch(ctx context.Context, batch *derivation.EspressoBat
 		s.batcherAtL1FinalizedCache.Add(l1Finalized, batcher)
 	}
 
-	if authorizedBatcher == (common.Address{}) || batch.Signer() != authorizedBatcher {
+	if authorizedBatcher == (common.Address{}) || batch.SignerAddress != authorizedBatcher {
 		s.logger.Info(DroppingBatchLogPrefix+" with invalid espresso batcher",
-			"batch", batch.Hash(), "signer", batch.Signer(),
+			"batch", batch.Hash(), "signer", batch.SignerAddress,
 			"l1Finalized", l1Finalized, "authorizedBatcher", authorizedBatcher)
 		return BatchDrop
 	}

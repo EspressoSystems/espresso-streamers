@@ -163,7 +163,7 @@ func TestCheckBatchAuthorizesL1FinalizedBatcher(t *testing.T) {
 			streamer.finalizedL1StateCache.Add(originNumber, l1State{hash: createHashFromHeight(originNumber)})
 
 			batch := chainedBatch(10, common.Hash{}, tc.signer, originNumber)
-			batch.SetL1Finalized(l1FinalizedNumber)
+			batch.L1Finalized = l1FinalizedNumber
 
 			require.Equal(t, tc.want, streamer.checkBatch(context.Background(), batch))
 		})
@@ -191,12 +191,12 @@ func TestCheckBatchAuthorizesAgainstL1FinalizedNotOrigin(t *testing.T) {
 	streamer.batcherAtL1FinalizedCache.Add(l1FinalizedNumber, newBatcher)
 
 	rotatedOut := chainedBatch(10, common.Hash{}, oldBatcher, originNumber)
-	rotatedOut.SetL1Finalized(l1FinalizedNumber)
+	rotatedOut.L1Finalized = l1FinalizedNumber
 	require.Equal(t, BatchValidity(BatchDrop), streamer.checkBatch(context.Background(), rotatedOut),
 		"a batcher authorized only at the declared origin must not be accepted")
 
 	current := chainedBatch(10, common.Hash{}, newBatcher, originNumber)
-	current.SetL1Finalized(l1FinalizedNumber)
+	current.L1Finalized = l1FinalizedNumber
 	require.Equal(t, BatchValidity(BatchAccept), streamer.checkBatch(context.Background(), current))
 }
 
@@ -209,7 +209,7 @@ func TestCheckBatchUndecidedUntilOriginFinalized(t *testing.T) {
 	streamer.batcherAtL1FinalizedCache.Add(l1FinalizedNumber, batcher)
 
 	batch := chainedBatch(10, common.Hash{}, batcher, originNumber)
-	batch.SetL1Finalized(l1FinalizedNumber)
+	batch.L1Finalized = l1FinalizedNumber
 
 	// Origin ahead of finalized L1: the origin hash cannot be verified yet.
 	streamer.finalizedL1 = createL1BlockRef(originNumber - 1)
@@ -230,7 +230,7 @@ func TestCheckBatchDropsMismatchedOriginHash(t *testing.T) {
 	streamer.batcherAtL1FinalizedCache.Add(l1FinalizedNumber, batcher)
 
 	batch := chainedBatch(10, common.Hash{}, batcher, originNumber)
-	batch.SetL1Finalized(l1FinalizedNumber)
+	batch.L1Finalized = l1FinalizedNumber
 	// Real L1 reports a different hash at that height than the batch declares.
 	streamer.finalizedL1StateCache.Add(originNumber, l1State{hash: common.HexToHash("0xdeadbeef")})
 
@@ -243,8 +243,26 @@ func TestCheckBatchUndecidedBeforeAnyFinalizedL1(t *testing.T) {
 	streamer.finalizedL1 = eth.L1BlockRef{}
 
 	batch := chainedBatch(10, common.Hash{}, batcher, 50)
-	batch.SetL1Finalized(80)
+	batch.L1Finalized = 80
 	require.Equal(t, BatchValidity(BatchUndecided), streamer.checkBatch(context.Background(), batch))
+}
+
+// TestCheckBatchPastAtOrBelowFinalizedL2 covers batches that finalization has already
+// passed: they have been derived, so they are skipped rather than stored, and without
+// spending the batcher and L1 origin lookups to find that out.
+func TestCheckBatchPastAtOrBelowFinalizedL2(t *testing.T) {
+	batcher := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	const finalizedL2 = uint64(10)
+
+	for _, l2Number := range []uint64{finalizedL2 - 1, finalizedL2} {
+		_, streamer := newTestStreamer(t, 42, batcher, 1)
+		streamer.store.advanceOnFinalization(finalizedL2)
+
+		batch := chainedBatch(l2Number, common.Hash{}, batcher, 50)
+		batch.L1Finalized = 80
+		require.Equal(t, BatchValidity(BatchPast), streamer.checkBatch(context.Background(), batch),
+			"batch %d is at or below the finalized L2 head %d", l2Number, finalizedL2)
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -256,7 +274,7 @@ func TestCheckBatchUndecidedBeforeAnyFinalizedL1(t *testing.T) {
 func acceptedBatch(t *testing.T, s *Streamer, l2Number uint64, parentHash common.Hash) *derivation.EspressoBatch {
 	t.Helper()
 	b := chainedBatch(l2Number, parentHash, common.Address{}, 1)
-	b.SetValidity(uint8(BatchAccept))
+	b.Validity = uint8(BatchAccept)
 	s.store.insert(b)
 	return b
 }
@@ -272,11 +290,11 @@ func TestStoreServesBatchesInOrderAndAdvancesTip(t *testing.T) {
 	ctx := context.Background()
 
 	first := acceptedBatch(t, streamer, origin+1, createHashFromHeight(origin))
-	second := acceptedBatch(t, streamer, origin+2, first.Header().Hash())
+	second := acceptedBatch(t, streamer, origin+2, first.BatchHeader.Hash())
 
 	require.Equal(t, first.Hash(), streamer.Peek(ctx).Hash())
 	streamer.AdvancePosition()
-	require.Equal(t, first.Header().Hash(), streamer.store.tip(), "consumed batch becomes the tip")
+	require.Equal(t, first.BatchHeader.Hash(), streamer.store.tip(), "consumed batch becomes the tip")
 
 	require.Equal(t, second.Hash(), streamer.Peek(ctx).Hash())
 	streamer.AdvancePosition()
@@ -307,13 +325,13 @@ func TestStoreKeepsCompetingCandidatesWithSameParent(t *testing.T) {
 	streamer.finalizedL1StateCache.Add(goodOrigin, l1State{hash: createHashFromHeight(goodOrigin)})
 
 	bad := chainedBatch(origin+1, parent, batcher, badOrigin)
-	bad.SetL1Finalized(l1Finalized)
-	bad.SetValidity(uint8(BatchUndecided))
+	bad.L1Finalized = l1Finalized
+	bad.Validity = uint8(BatchUndecided)
 	streamer.store.insert(bad)
 
 	good := chainedBatch(origin+1, parent, batcher, goodOrigin)
-	good.SetL1Finalized(l1Finalized)
-	good.SetValidity(uint8(BatchUndecided))
+	good.L1Finalized = l1Finalized
+	good.Validity = uint8(BatchUndecided)
 	streamer.store.insert(good)
 
 	require.Equal(t, 2, storeTotal(streamer), "both candidates must be retained")
@@ -354,9 +372,9 @@ func TestStoreOutOfOrderInsertsServedInOrder(t *testing.T) {
 
 	// Build the chain, then insert the child before the parent.
 	first := chainedBatch(origin+1, createHashFromHeight(origin), common.Address{}, 1)
-	first.SetValidity(uint8(BatchAccept))
-	second := chainedBatch(origin+2, first.Header().Hash(), common.Address{}, 1)
-	second.SetValidity(uint8(BatchAccept))
+	first.Validity = uint8(BatchAccept)
+	second := chainedBatch(origin+2, first.BatchHeader.Hash(), common.Address{}, 1)
+	second.Validity = uint8(BatchAccept)
 
 	streamer.store.insert(second)
 	require.Nil(t, streamer.Peek(ctx), "the later batch must not be served early")
@@ -411,7 +429,7 @@ func TestStorePrunesFinalizedAndLeavesNoStale(t *testing.T) {
 	_, streamer := newTestStreamer(t, 42, common.Address{}, origin)
 
 	first := acceptedBatch(t, streamer, origin+1, createHashFromHeight(origin))
-	acceptedBatch(t, streamer, origin+2, first.Header().Hash())
+	acceptedBatch(t, streamer, origin+2, first.BatchHeader.Hash())
 
 	streamer.store.advanceOnFinalization(origin + 1)
 
@@ -486,8 +504,8 @@ func TestFetchStoresAndServesSignedBatch(t *testing.T) {
 	got := streamer.Peek(ctx)
 	require.NotNil(t, got, "the signed batch should have been stored and accepted")
 	require.Equal(t, batch.Number(), got.Number())
-	require.Equal(t, signerAddress, got.Signer(), "signer is recovered from the signature")
-	require.Equal(t, BatchValidity(BatchAccept), BatchValidity(got.Validity()))
+	require.Equal(t, signerAddress, got.SignerAddress, "signer is recovered from the signature")
+	require.Equal(t, BatchValidity(BatchAccept), BatchValidity(got.Validity))
 }
 
 // TestFetchDropsForeignSignedBatch is the same path with a batch signed by a key that

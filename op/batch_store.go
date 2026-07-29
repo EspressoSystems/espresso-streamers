@@ -8,10 +8,18 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
+// storedBatch pairs a batch with the order Espresso delivered it in. The map that
+// holds these does not preserve insertion order, so the stamp is what lets peek
+// resolve a fork the same way on every node.
+type storedBatch struct {
+	batch *derivation.EspressoBatch
+	order uint64
+}
+
 type batchStore struct {
-	// batches maps L2 block number -> parent hash -> competing candidates for that
-	// slot, in the order Espresso delivered them.
-	batches map[uint64]map[common.Hash][]*derivation.EspressoBatch
+	// batches maps L2 block number -> block hash -> the batch for that block. More
+	// than one entry at a number means competing candidates for that slot.
+	batches map[uint64]map[common.Hash]storedBatch
 
 	mu           sync.RWMutex
 	nextBatchPos uint64
@@ -28,7 +36,7 @@ type batchStore struct {
 
 func newBatchStore(nextBatchPos uint64, tipHash common.Hash, logger log.Logger) *batchStore {
 	return &batchStore{
-		batches:      make(map[uint64]map[common.Hash][]*derivation.EspressoBatch),
+		batches:      make(map[uint64]map[common.Hash]storedBatch),
 		nextBatchPos: nextBatchPos,
 		tipHash:      tipHash,
 		log:          logger,
@@ -37,7 +45,7 @@ func newBatchStore(nextBatchPos uint64, tipHash common.Hash, logger log.Logger) 
 
 func (s *batchStore) insert(batch *derivation.EspressoBatch) {
 	num := batch.Number()
-	parentHash := batch.Header().ParentHash
+	parentHash := batch.BatchHeader.ParentHash
 	hash := batch.Hash()
 
 	s.mu.Lock()
@@ -47,31 +55,33 @@ func (s *batchStore) insert(batch *derivation.EspressoBatch) {
 	}
 
 	if s.batches[num] == nil {
-		s.batches[num] = make(map[common.Hash][]*derivation.EspressoBatch)
+		s.batches[num] = make(map[common.Hash]storedBatch)
 	}
-	// Deduplicated on the batch's own hash, not on its parent: a batch sharing this
-	// slot's parent hash is a competing candidate, not a duplicate.
-	for _, existing := range s.batches[num][parentHash] {
-		if existing.Hash() == hash {
-			s.log.Info(
-				"ignoring duplicate batch",
-				"batchNr", num,
-				"hash", hash,
-				"parentHash", parentHash,
-			)
-			return
+	// Filter duplicate hashes
+	if _, exists := s.batches[num][hash]; exists {
+		s.log.Info(
+			"ignoring duplicate batch",
+			"batchNr", num,
+			"hash", hash,
+			"parentHash", parentHash,
+		)
+		return
+	}
+	// Keep track of order they came if different hashes for same batch
+	var order uint64
+	for _, candidate := range s.batches[num] {
+		if candidate.order >= order {
+			order = candidate.order + 1
 		}
 	}
-	s.batches[num][parentHash] = append(s.batches[num][parentHash], batch)
+	s.batches[num][hash] = storedBatch{batch: batch, order: order}
 	s.log.Info(
 		"stored batch",
 		"batchNr", num,
 		"hash", hash,
 		"parentHash", parentHash,
-		"blockHash", batch.Header().Hash(),
-		"validity", BatchValidity(batch.Validity()),
-		"parents", len(s.batches[num]),
-		"candidatesForParent", len(s.batches[num][parentHash]),
+		"validity", BatchValidity(batch.Validity),
+		"candidates", len(s.batches[num]),
 	)
 }
 
@@ -84,8 +94,8 @@ func (s *batchStore) peek() *derivation.EspressoBatch {
 
 	s.lastPeeked = nil
 
-	forks := s.batches[s.nextBatchPos]
-	if len(forks) == 0 {
+	candidates := s.batches[s.nextBatchPos]
+	if len(candidates) == 0 {
 		return nil
 	}
 	// Unreachable by construction, so fail closed rather than picking a fork by map
@@ -94,23 +104,40 @@ func (s *batchStore) peek() *derivation.EspressoBatch {
 		s.log.Error(
 			"tip hash unset, refusing to select a fork",
 			"blockNr", s.nextBatchPos,
-			"forks", len(forks),
+			"candidates", len(candidates),
 		)
 		return nil
 	}
-	candidates := forks[s.tipHash]
-	if len(candidates) == 0 {
+	// Earliest in Espresso order among the candidates extending the tip wins.
+	// We keep track of the order from Espresso
+	var next storedBatch
+	for _, candidate := range candidates {
+		if candidate.batch.BatchHeader.ParentHash != s.tipHash {
+			continue
+		}
+		if next.batch == nil || candidate.order < next.order {
+			next = candidate
+		}
+	}
+	if next.batch == nil {
 		s.log.Info(
 			"no fork matches tip",
 			"blockNr", s.nextBatchPos,
 			"tip", s.tipHash,
-			"parents", len(forks),
+			"candidates", len(candidates),
 		)
 		return nil
 	}
-	// Earliest in Espresso order wins.
-	s.lastPeeked = candidates[0]
-	return candidates[0]
+	s.lastPeeked = next.batch
+	return next.batch
+}
+
+// finalizedL2 returns the highest L2 block number known to be finalized. Batches at
+// or below it have already been derived.
+func (s *batchStore) finalizedL2() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lastFinalizedL2
 }
 
 // tip returns the parent hash the next batch must declare, or the zero hash if no
@@ -122,29 +149,16 @@ func (s *batchStore) tip() common.Hash {
 }
 
 // remove evicts a single batch that has been decided invalid, so Peek does not
-// re-check it on every call. Competing candidates for the same slot, and sibling
-// forks at the same height, are left in place - removing the head of a slot is what
-// lets Peek fall through to the next candidate.
+// re-check it on every call. The other candidates at this height are left in place -
+// evicting the one Peek just picked is what lets it fall through to the next.
 func (s *batchStore) remove(batch *derivation.EspressoBatch) {
 	num := batch.Number()
-	parentHash := batch.Header().ParentHash
 	hash := batch.Hash()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	candidates := s.batches[num][parentHash]
-	for i, candidate := range candidates {
-		if candidate.Hash() != hash {
-			continue
-		}
-		s.batches[num][parentHash] = append(candidates[:i], candidates[i+1:]...)
-		break
-	}
-
-	if len(s.batches[num][parentHash]) == 0 {
-		delete(s.batches[num], parentHash)
-	}
+	delete(s.batches[num], hash)
 	if len(s.batches[num]) == 0 {
 		delete(s.batches, num)
 	}
@@ -168,7 +182,7 @@ func (s *batchStore) advance() {
 			"tip", s.tipHash,
 		)
 	} else {
-		s.tipHash = s.lastPeeked.Header().Hash()
+		s.tipHash = s.lastPeeked.BatchHeader.Hash()
 		s.lastPeeked = nil
 	}
 	s.nextBatchPos++
@@ -185,12 +199,10 @@ func (s *batchStore) resetToSafeBatch(nextBatchPos uint64, tipHash common.Hash) 
 }
 
 func (s *batchStore) countLocked() (total int, stale int) {
-	for height, forks := range s.batches {
-		for _, candidates := range forks {
-			total += len(candidates)
-			if height <= s.lastFinalizedL2 {
-				stale += len(candidates)
-			}
+	for height, candidates := range s.batches {
+		total += len(candidates)
+		if height <= s.lastFinalizedL2 {
+			stale += len(candidates)
 		}
 	}
 	return total, stale
