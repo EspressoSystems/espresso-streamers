@@ -52,10 +52,6 @@ type Streamer struct {
 	done        chan struct{}
 }
 
-type L2Client interface {
-	HeaderHashByNumber(ctx context.Context, number *big.Int) (common.Hash, error)
-}
-
 // ErrAlreadyStarted is returned by Start when the poll loop is already running.
 var ErrAlreadyStarted = errors.New("streamer already started")
 

@@ -2,82 +2,86 @@ package op
 
 import (
 	"context"
+	"math/big"
 
-	"github.com/ethereum-optimism/optimism/op-service/eth"
+	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// EspressoStreamer defines the interface for the Espresso streamer.
-type EspressoStreamer[B Batch] interface {
-	// Update will update the `EspressoStreamer“ by attempting to ensure that
-	// the next call to the `Next` method will return a `Batch`.
-	//
-	// It attempts to ensure the existence of a next batch, provided no errors
-	// occur when communicating with HotShot, by processing Blocks retrieved
-	// from `HotShot` in discreet batches. If each processing of a batch of
-	// blocks will not yield a new `Batch`, then it will continue to process
-	// the next batch of blocks from HotShot until it runs out of blocks to
-	// process.
-	//
-	//	NOTE: this method is best effort.  It is unable to guarantee that the
-	//	next call to `Next` will return a batch.  However, the only things
-	//	that will prevent the next call to `Next` from returning a batch is if
-	//	there are no more HotShot blocks to process currently, or if an error
-	//	occurs when communicating with HotShot.
-	Update(ctx context.Context) error
+// BatchValidity is the verdict checkBatch reaches about a batch.
+type BatchValidity uint8
 
-	// Refresh updates the local references of the EspressoStreamer to the
-	// specified values.
-	//
-	// These values can be used to help determine whether the Streamer needs
-	// to be reset or not.
-	//
-	// NOTE: This will only automatically reset the Streamer if the
-	// `safeBatchNumber` moves backwards.
-	Refresh(ctx context.Context, finalizedL1 eth.L1BlockRef, safeBatchNumber uint64, safeL1Origin eth.BlockID) error
+const (
+	// BatchDrop indicates that the batch is invalid, and will always be in the future, unless we reorg
+	BatchDrop = iota
+	// BatchAccept indicates that the batch is valid and should be processed
+	BatchAccept
+	// BatchUndecided indicates we are lacking L1 information until we can proceed batch filtering
+	BatchUndecided
+	// BatchPast indicates that the batch is from the past, i.e. its timestamp is smaller or equal
+	// to the safe head's timestamp.
+	BatchPast
+)
 
-	// RefreshSafeL1Origin updates the safe L1 origin for the streamer. This is
-	// used to help the streamer determine if it needs to be reset or not based
-	// on the safe L1 origin moving backwards.
-	//
-	// NOTE: This will only automatically reset the Streamer if the
-	// `safeL1Origin` moves backwards.
-	RefreshSafeL1Origin(safeL1Origin eth.BlockID)
+// DroppingBatchLogPrefix is the log message prefix used when dropping a batch.
+//
+// NOTE: It is referenced by the DroppingBatch constant in logmodule/log_keys.go of the
+// optimism-espresso-integration repo for log investigation. Any change here must be reflected
+// there too.
+const DroppingBatchLogPrefix = "Dropping batch"
 
-	// Reset will reset the Streamer to the last known good safe state.
-	// This generally means resetting to the last know good safe batch
-	// position, but in the case of consuming blocks from Espresso, it will
-	// also reset the starting Espresso block position to the last known
-	// good safe block position there as well.
-	Reset()
+// HOTSHOT_BLOCK_FETCH_LIMIT is the maximum number of blocks to attempt to
+// load from Espresso in a single process using fetch API.
+// This helps to limit our block polling to a limited number of blocks within
+// a single batched attempt.
+const HOTSHOT_BLOCK_FETCH_LIMIT = 100
 
-	// UnmarshalBatch is a convenience method that allows the caller to
-	// attempt to unmarshal a batch from the provided byte slice.
-	UnmarshalBatch(b []byte, l1Finalized uint64) (*B, error)
+// Espresso light client bindings don't have an explicit name for this struct,
+// so we define it here to avoid spelling it out every time
+type FinalizedState = struct {
+	ViewNum       uint64
+	BlockHeight   uint64
+	BlockCommRoot *big.Int
+}
 
-	// HasNext checks to see if there are any batches left to read in the
-	// streamer.
-	HasNext(ctx context.Context) bool
+// LightClientCallerInterface is an interface that documents the methods we utilize
+// for the espresso light client
+//
+// We define this here locally in order to effectively document the methods
+// we utilize.  This approach allows us to avoid importing the entire package
+// and allows us to easily swap implementations for testing.
+type LightClientCallerInterface interface {
+	FinalizedState(opts *bind.CallOpts) (FinalizedState, error)
+}
 
-	// Next attempts to return the next batch from the streamer.  If there
-	// are no batches left to read, at the moment of the call, it will return
-	// nil.
-	Next(ctx context.Context) *B
+// EspressoClient is an interface that documents the methods we utilize for
+// the espressoClient.Client.
+//
+// As a result we are able to easily swap implementations for testing, or
+// for modification / wrapping.
+type EspressoClient interface {
+	FetchLatestBlockHeight(ctx context.Context) (uint64, error)
+	FetchNamespaceTransactionsInRange(ctx context.Context, fromHeight uint64, toHeight uint64, namespace uint64) ([]espressoCommon.NamespaceTransactionsRangeData, error)
+	FetchHeadersByRange(ctx context.Context, fromHeight uint64, toHeight uint64) ([]espressoCommon.HeaderImpl, error)
+}
 
-	// Peek attempts to return the next batch from the streamer without advancing the streamer's position.
-	// If there are no batches left to read, at the moment of the call, it will return nil.
-	Peek(ctx context.Context) *B
+// L1Client is an interface that documents the methods we utilize for
+// the L1 client.
+type L1Client interface {
+	HeaderHashByNumber(ctx context.Context, number *big.Int) (common.Hash, error)
+	bind.ContractCaller
+}
 
-	// SetProperHead drains stale/wrong-fork entries from the buffer front,
-	// positioning it at the correct fork for the next Peek call. Should be called
-	// when Peek returns a batch whose parentHash doesn't match the current chain tip.
-	// No-ops if headBatch's block number doesn't match the expected next batch position.
-	SetProperHead(parentHash common.Hash)
+// L2Client is the subset of the L2 execution client the streamer needs: resolving
+// the hash of the block it is anchored to, so the caller does not have to supply it.
+type L2Client interface {
+	HeaderHashByNumber(ctx context.Context, number *big.Int) (common.Hash, error)
+}
 
-	// GetFallbackHotshotPos returns the fallback hotshot position
-	GetFallbackHotshotPos() uint64
-
-	// GetBatchFinalizationTimestamp returns the finalization timestamp for a
-	// given batch, which is the timestamp of block N+2 in HotShot.
-	GetBatchFinalizationTimestamp(hash common.Hash) (uint64, bool)
+// Subset of L1 state we're interested in for a particular L1 origin block:
+// the block hash, used to validate a batch's declared L1 origin.
+type l1State struct {
+	// Block hash
+	hash common.Hash
 }
