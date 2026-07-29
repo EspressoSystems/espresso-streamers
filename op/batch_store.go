@@ -35,7 +35,7 @@ func newBatchStore(nextBatchPos uint64, tipHash common.Hash, logger log.Logger) 
 	}
 }
 
-func (s *batchStore) insert(batch *derivation.EspressoBatch) bool {
+func (s *batchStore) insert(batch *derivation.EspressoBatch) {
 	num := batch.Number()
 	parentHash := batch.Header().ParentHash
 	hash := batch.Hash()
@@ -43,7 +43,7 @@ func (s *batchStore) insert(batch *derivation.EspressoBatch) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if num < s.lastFinalizedL2 {
-		return false
+		return
 	}
 
 	if s.batches[num] == nil {
@@ -59,7 +59,7 @@ func (s *batchStore) insert(batch *derivation.EspressoBatch) bool {
 				"hash", hash,
 				"parentHash", parentHash,
 			)
-			return false
+			return
 		}
 	}
 	s.batches[num][parentHash] = append(s.batches[num][parentHash], batch)
@@ -73,7 +73,6 @@ func (s *batchStore) insert(batch *derivation.EspressoBatch) bool {
 		"parents", len(s.batches[num]),
 		"candidatesForParent", len(s.batches[num][parentHash]),
 	)
-	return true
 }
 
 // peek returns the batch at the current position that extends the tracked tip,
