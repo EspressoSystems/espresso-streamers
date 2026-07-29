@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"sync"
 	"time"
@@ -20,7 +21,7 @@ import (
 
 type Streamer struct {
 	espressoClient EspressoClient
-	// TODO: unusued, needed?
+	// TODO: unused, needed?
 	espressoLightClient      LightClientCallerInterface
 	batchAuthenticatorCaller *bindings.BatchAuthenticatorCaller
 	rollupL1Client           L1Client
@@ -164,24 +165,25 @@ func (s *Streamer) Stop() {
 // batch that resolves to BatchDrop is evicted and the next candidate is considered.
 func (s *Streamer) Peek(ctx context.Context) *derivation.EspressoBatch {
 	for {
-		batch := s.store.peek()
+		batch, validity := s.store.peek()
 		if batch == nil {
 			return nil
 		}
-		if BatchValidity(batch.Validity) == BatchAccept {
+		if validity == BatchAccept {
 			return batch
 		}
 
 		// Undecided: retry the check that was previously blocked on L1 state.
-		validity := s.checkBatch(ctx, batch)
-		batch.Validity = uint8(validity)
+		validity = s.checkBatch(ctx, batch)
 		switch validity {
 		case BatchAccept:
+			s.store.setValidity(batch, validity)
 			return batch
 		case BatchDrop:
 			s.store.remove(batch)
 			continue
 		}
+		s.store.setValidity(batch, validity)
 		return nil
 	}
 }
@@ -261,6 +263,10 @@ func (s *Streamer) fetchEspressoTransactions(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// The exclusive end of the fetch range is this height plus one, which would wrap.
+	if finalizedBlockHeight == math.MaxUint64 {
+		return fmt.Errorf("espresso block height overflows uint64")
+	}
 	if s.hotShotPos >= finalizedBlockHeight {
 		return nil
 	}
@@ -278,9 +284,12 @@ func (s *Streamer) fetchEspressoTransactions(ctx context.Context) error {
 	}
 
 	s.logger.Info("fetched HotShot range", "start", s.hotShotPos, "end", end, "blocks", len(blocks))
-	if len(blocks) == 0 {
-		s.hotShotPos = end
-		return nil
+
+	// hotShotPos advances to end below and never rewinds, so a short response would
+	// skip the blocks it left out for good.
+	if uint64(len(blocks)) != end-s.hotShotPos {
+		return fmt.Errorf("hotshot range [%d, %d): got %d blocks, want %d",
+			s.hotShotPos, end, len(blocks), end-s.hotShotPos)
 	}
 
 	// Fetch the headers for the same range so each batch can be authorized against
@@ -342,8 +351,7 @@ func (s *Streamer) process(ctx context.Context, hotShotHeight uint64, l1Finalize
 		s.logger.Warn("Inserting undecided batch", "batch", batch.Hash())
 	case BatchAccept:
 	}
-	batch.Validity = uint8(validity)
-	s.store.insert(batch)
+	s.store.insert(batch, validity)
 }
 
 // checkBatch verifies the batches l1 origin is finalized, and the correct signer against the contract
@@ -356,9 +364,18 @@ func (s *Streamer) checkBatch(ctx context.Context, batch *derivation.EspressoBat
 
 	l1Finalized := batch.L1Finalized
 
+	s.mu.RLock()
+	finalizedL1 := s.finalizedL1
+	s.mu.RUnlock()
+
 	// Look up the batcher authorized at l1Finalized which is read from Espresso Header
 	authorizedBatcher, ok := s.batcherAtL1FinalizedCache.Get(l1Finalized)
 	if !ok {
+		if l1Finalized > finalizedL1.Number {
+			s.logger.Warn("HotShot header reports an L1 finality we have not observed yet, pending resync",
+				"headerL1Finalized", l1Finalized, "ourL1Finalized", finalizedL1.Number)
+			return BatchUndecided
+		}
 		batcher, err := s.batchAuthenticatorCaller.EspressoBatcherAtBlock(
 			&bind.CallOpts{Context: ctx},
 			l1Finalized,
@@ -381,9 +398,6 @@ func (s *Streamer) checkBatch(ctx context.Context, batch *derivation.EspressoBat
 
 	// Signer is authorized. The declared L1 origin must be finalized before we can
 	// verify its hash.
-	s.mu.RLock()
-	finalizedL1 := s.finalizedL1
-	s.mu.RUnlock()
 
 	// Make sure the finalized L1 block is initialized before checking the block number.
 	if finalizedL1 == (eth.L1BlockRef{}) {

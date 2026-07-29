@@ -2,6 +2,7 @@ package op
 
 import (
 	"context"
+	"math"
 	"math/big"
 	"sync/atomic"
 	"testing"
@@ -192,12 +193,12 @@ func TestCheckBatchAuthorizesAgainstL1FinalizedNotOrigin(t *testing.T) {
 
 	rotatedOut := chainedBatch(10, common.Hash{}, oldBatcher, originNumber)
 	rotatedOut.L1Finalized = l1FinalizedNumber
-	require.Equal(t, BatchValidity(BatchDrop), streamer.checkBatch(context.Background(), rotatedOut),
+	require.Equal(t, BatchDrop, streamer.checkBatch(context.Background(), rotatedOut),
 		"a batcher authorized only at the declared origin must not be accepted")
 
 	current := chainedBatch(10, common.Hash{}, newBatcher, originNumber)
 	current.L1Finalized = l1FinalizedNumber
-	require.Equal(t, BatchValidity(BatchAccept), streamer.checkBatch(context.Background(), current))
+	require.Equal(t, BatchAccept, streamer.checkBatch(context.Background(), current))
 }
 
 func TestCheckBatchUndecidedUntilOriginFinalized(t *testing.T) {
@@ -213,11 +214,11 @@ func TestCheckBatchUndecidedUntilOriginFinalized(t *testing.T) {
 
 	// Origin ahead of finalized L1: the origin hash cannot be verified yet.
 	streamer.finalizedL1 = createL1BlockRef(originNumber - 1)
-	require.Equal(t, BatchValidity(BatchUndecided), streamer.checkBatch(context.Background(), batch))
+	require.Equal(t, BatchUndecided, streamer.checkBatch(context.Background(), batch))
 
 	// Once finality reaches the origin the same batch resolves.
 	streamer.finalizedL1 = createL1BlockRef(originNumber + 1)
-	require.Equal(t, BatchValidity(BatchAccept), streamer.checkBatch(context.Background(), batch))
+	require.Equal(t, BatchAccept, streamer.checkBatch(context.Background(), batch))
 }
 
 func TestCheckBatchDropsMismatchedOriginHash(t *testing.T) {
@@ -234,7 +235,7 @@ func TestCheckBatchDropsMismatchedOriginHash(t *testing.T) {
 	// Real L1 reports a different hash at that height than the batch declares.
 	streamer.finalizedL1StateCache.Add(originNumber, l1State{hash: common.HexToHash("0xdeadbeef")})
 
-	require.Equal(t, BatchValidity(BatchDrop), streamer.checkBatch(context.Background(), batch))
+	require.Equal(t, BatchDrop, streamer.checkBatch(context.Background(), batch))
 }
 
 func TestCheckBatchUndecidedBeforeAnyFinalizedL1(t *testing.T) {
@@ -244,7 +245,7 @@ func TestCheckBatchUndecidedBeforeAnyFinalizedL1(t *testing.T) {
 
 	batch := chainedBatch(10, common.Hash{}, batcher, 50)
 	batch.L1Finalized = 80
-	require.Equal(t, BatchValidity(BatchUndecided), streamer.checkBatch(context.Background(), batch))
+	require.Equal(t, BatchUndecided, streamer.checkBatch(context.Background(), batch))
 }
 
 // TestCheckBatchPastAtOrBelowFinalizedL2 covers batches that finalization has already
@@ -260,7 +261,7 @@ func TestCheckBatchPastAtOrBelowFinalizedL2(t *testing.T) {
 
 		batch := chainedBatch(l2Number, common.Hash{}, batcher, 50)
 		batch.L1Finalized = 80
-		require.Equal(t, BatchValidity(BatchPast), streamer.checkBatch(context.Background(), batch),
+		require.Equal(t, BatchPast, streamer.checkBatch(context.Background(), batch),
 			"batch %d is at or below the finalized L2 head %d", l2Number, finalizedL2)
 	}
 }
@@ -274,8 +275,7 @@ func TestCheckBatchPastAtOrBelowFinalizedL2(t *testing.T) {
 func acceptedBatch(t *testing.T, s *Streamer, l2Number uint64, parentHash common.Hash) *derivation.EspressoBatch {
 	t.Helper()
 	b := chainedBatch(l2Number, parentHash, common.Address{}, 1)
-	b.Validity = uint8(BatchAccept)
-	s.store.insert(b)
+	s.store.insert(b, BatchAccept)
 	return b
 }
 
@@ -326,13 +326,11 @@ func TestStoreKeepsCompetingCandidatesWithSameParent(t *testing.T) {
 
 	bad := chainedBatch(origin+1, parent, batcher, badOrigin)
 	bad.L1Finalized = l1Finalized
-	bad.Validity = uint8(BatchUndecided)
-	streamer.store.insert(bad)
+	streamer.store.insert(bad, BatchUndecided)
 
 	good := chainedBatch(origin+1, parent, batcher, goodOrigin)
 	good.L1Finalized = l1Finalized
-	good.Validity = uint8(BatchUndecided)
-	streamer.store.insert(good)
+	streamer.store.insert(good, BatchUndecided)
 
 	require.Equal(t, 2, storeTotal(streamer), "both candidates must be retained")
 
@@ -351,18 +349,47 @@ func TestStoreIgnoresDuplicateBatchHash(t *testing.T) {
 	again := chainedBatch(origin+1, parent, common.Address{}, 1)
 	require.Equal(t, first.Hash(), again.Hash(), "same contents must hash the same")
 
-	streamer.store.insert(first)
-	streamer.store.insert(again)
+	streamer.store.insert(first, BatchAccept)
+	streamer.store.insert(again, BatchAccept)
 
 	require.Equal(t, 1, storeTotal(streamer), "an identical batch must not be stored twice")
 }
 
 // storeTotal reads the store's batch count under its lock.
+// peekBatch returns just the batch from the store's peek, discarding the verdict.
+func peekBatch(s *Streamer) *derivation.EspressoBatch {
+	batch, _ := s.store.peek()
+	return batch
+}
+
+// storeValidity reads the verdict the store recorded for a batch, under its lock.
+func storeValidity(s *Streamer, batch *derivation.EspressoBatch) BatchValidity {
+	s.store.mu.RLock()
+	defer s.store.mu.RUnlock()
+	return s.store.batches[batch.Number()][batch.Hash()].validity
+}
+
 func storeTotal(s *Streamer) int {
 	s.store.mu.RLock()
 	defer s.store.mu.RUnlock()
-	total, _ := s.store.countLocked()
+	total := 0
+	for _, candidates := range s.store.batches {
+		total += len(candidates)
+	}
 	return total
+}
+
+// storeHasStale reports whether the store still holds a batch at or below the height it
+// believes is finalized.
+func storeHasStale(s *Streamer) bool {
+	s.store.mu.RLock()
+	defer s.store.mu.RUnlock()
+	for height := range s.store.batches {
+		if height <= s.store.lastFinalizedL2 {
+			return true
+		}
+	}
+	return false
 }
 
 func TestStoreOutOfOrderInsertsServedInOrder(t *testing.T) {
@@ -372,14 +399,12 @@ func TestStoreOutOfOrderInsertsServedInOrder(t *testing.T) {
 
 	// Build the chain, then insert the child before the parent.
 	first := chainedBatch(origin+1, createHashFromHeight(origin), common.Address{}, 1)
-	first.Validity = uint8(BatchAccept)
 	second := chainedBatch(origin+2, first.BatchHeader.Hash(), common.Address{}, 1)
-	second.Validity = uint8(BatchAccept)
 
-	streamer.store.insert(second)
+	streamer.store.insert(second, BatchAccept)
 	require.Nil(t, streamer.Peek(ctx), "the later batch must not be served early")
 
-	streamer.store.insert(first)
+	streamer.store.insert(first, BatchAccept)
 	require.Equal(t, first.Hash(), streamer.Peek(ctx).Hash())
 	streamer.AdvancePosition()
 	require.Equal(t, second.Hash(), streamer.Peek(ctx).Hash())
@@ -433,12 +458,8 @@ func TestStorePrunesFinalizedAndLeavesNoStale(t *testing.T) {
 
 	streamer.store.advanceOnFinalization(origin + 1)
 
-	streamer.store.mu.RLock()
-	total, stale := streamer.store.countLocked()
-	streamer.store.mu.RUnlock()
-
-	require.Equal(t, 1, total, "the finalized slot should be gone")
-	require.Zero(t, stale, "nothing may survive at or below the finalized height")
+	require.Equal(t, 1, storeTotal(streamer), "the finalized slot should be gone")
+	require.False(t, storeHasStale(streamer), "nothing may survive at or below the finalized height")
 }
 
 func TestStoreRemovePreservesHotShotOrder(t *testing.T) {
@@ -450,16 +471,16 @@ func TestStoreRemovePreservesHotShotOrder(t *testing.T) {
 	var inserted []*derivation.EspressoBatch
 	for _, o := range []uint64{10, 11, 12} {
 		b := chainedBatch(origin+1, parent, common.Address{}, o)
-		streamer.store.insert(b)
+		streamer.store.insert(b, BatchAccept)
 		inserted = append(inserted, b)
 	}
 
 	// Dropping the head must promote the next in order, not swap the last one in.
 	streamer.store.remove(inserted[0])
-	require.Equal(t, inserted[1].Hash(), streamer.store.peek().Hash())
+	require.Equal(t, inserted[1].Hash(), peekBatch(streamer).Hash())
 
 	streamer.store.remove(inserted[1])
-	require.Equal(t, inserted[2].Hash(), streamer.store.peek().Hash())
+	require.Equal(t, inserted[2].Hash(), peekBatch(streamer).Hash())
 }
 
 func TestStoreAdvanceWithoutPeekDoesNotMoveTip(t *testing.T) {
@@ -471,6 +492,28 @@ func TestStoreAdvanceWithoutPeekDoesNotMoveTip(t *testing.T) {
 
 	require.Equal(t, before, streamer.store.tip(), "tip only moves for a batch that was handed out")
 	require.Equal(t, origin+2, streamer.store.nextBatchPos)
+}
+
+// TestAdvanceAfterWithheldPeekDoesNotMoveTip pins the Peek/AdvancePosition handoff: a
+// batch Peek withheld as undecided must not become the tip if the consumer advances
+// anyway, which would adopt a block nobody derived.
+func TestAdvanceAfterWithheldPeekDoesNotMoveTip(t *testing.T) {
+	batcher := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	const origin = uint64(1)
+	_, streamer := newTestStreamer(t, 42, batcher, origin)
+	// No finalized L1 yet, so the re-check inside Peek returns BatchUndecided.
+	streamer.finalizedL1 = eth.L1BlockRef{}
+
+	batch := chainedBatch(origin+1, createHashFromHeight(origin), batcher, 50)
+	batch.L1Finalized = 80
+	streamer.store.insert(batch, BatchUndecided)
+
+	before := streamer.store.tip()
+	require.Nil(t, streamer.Peek(context.Background()), "an undecided batch must not be served")
+
+	streamer.AdvancePosition()
+
+	require.Equal(t, before, streamer.store.tip(), "a withheld batch must not become the tip")
 }
 
 // -----------------------------------------------------------------------------
@@ -505,7 +548,7 @@ func TestFetchStoresAndServesSignedBatch(t *testing.T) {
 	require.NotNil(t, got, "the signed batch should have been stored and accepted")
 	require.Equal(t, batch.Number(), got.Number())
 	require.Equal(t, signerAddress, got.SignerAddress, "signer is recovered from the signature")
-	require.Equal(t, BatchValidity(BatchAccept), BatchValidity(got.Validity))
+	require.Equal(t, BatchAccept, storeValidity(streamer, got), "Peek must only serve accepted batches")
 }
 
 // TestFetchDropsForeignSignedBatch is the same path with a batch signed by a key that
@@ -534,6 +577,16 @@ func TestFetchDropsForeignSignedBatch(t *testing.T) {
 
 	require.Nil(t, streamer.Peek(ctx), "a batch signed by an unauthorized key must be dropped")
 	require.Zero(t, storeTotal(streamer), "it must not even be stored")
+}
+
+// TestFetchRejectsOverflowingEspressoHeight covers the guard on the reported HotShot
+// height: at the maximum, the range's exclusive end would wrap to zero.
+func TestFetchRejectsOverflowingEspressoHeight(t *testing.T) {
+	state, streamer := newTestStreamer(t, 42, common.Address{}, 1)
+	state.LatestEspHeight = math.MaxUint64
+
+	require.ErrorContains(t, streamer.fetchEspressoTransactions(context.Background()), "overflows uint64")
+	require.Zero(t, streamer.hotShotPos, "the position must not move on a rejected height")
 }
 
 func TestFetchNoOpWhenCaughtUp(t *testing.T) {

@@ -23,9 +23,8 @@ type EspressoBatch struct {
 	Batch         derive.SingularBatch
 	L1InfoDeposit *types.Transaction
 	SignerAddress common.Address
-	// L1Finalized and Validity are attached locally after decoding
+	// L1Finalized is attached locally after decoding
 	L1Finalized uint64 `rlp:"-"`
-	Validity    uint8  `rlp:"-"`
 }
 
 func (b EspressoBatch) Number() uint64 {

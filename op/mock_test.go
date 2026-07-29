@@ -92,7 +92,9 @@ func (m *MockStreamerSource) FetchNamespaceTransactionsInRange(ctx context.Conte
 	if fromHeight > toHeight {
 		return nil, ErrNotFound
 	}
-	for height := fromHeight; height <= toHeight; height++ {
+	// The query service serves `from..until`, a half-open range, so toHeight is
+	// excluded (availability.rs get_block_range).
+	for height := fromHeight; height < toHeight; height++ {
 		transactionsInBlock, ok := m.EspTransactionData[BlockAndNamespace(height, namespace)]
 		if !ok {
 			// Preserve alignment with the requested range even if the block
@@ -117,14 +119,14 @@ func (m *MockStreamerSource) FetchNamespaceTransactionsInRange(ctx context.Conte
 }
 
 // FetchHeadersByRange implements EspressoClient. It returns a HotShot header for
-// each height in [fromHeight, toHeight] carrying the height and a finalized L1
+// each height in [fromHeight, toHeight) carrying the height and a finalized L1
 // block (from HotShotL1Finalized, defaulting to the height itself).
 func (m *MockStreamerSource) FetchHeadersByRange(ctx context.Context, fromHeight uint64, toHeight uint64) ([]espressoCommon.HeaderImpl, error) {
 	if fromHeight > toHeight {
 		return nil, ErrNotFound
 	}
 	var headers []espressoCommon.HeaderImpl
-	for height := fromHeight; height <= toHeight; height++ {
+	for height := fromHeight; height < toHeight; height++ {
 		l1Finalized := height
 		if v, ok := m.HotShotL1Finalized[height]; ok {
 			l1Finalized = v

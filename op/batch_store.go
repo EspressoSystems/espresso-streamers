@@ -8,12 +8,13 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-// storedBatch pairs a batch with the order Espresso delivered it in. The map that
-// holds these does not preserve insertion order, so the stamp is what lets peek
-// resolve a fork the same way on every node.
+// storedBatch is a batch plus the bookkeeping the store owns: the order Espresso
+// delivered it in, which breaks fork ties that map iteration cannot, and the last
+// verdict reached about it.
 type storedBatch struct {
-	batch *derivation.EspressoBatch
-	order uint64
+	batch    *derivation.EspressoBatch
+	order    uint64
+	validity BatchValidity
 }
 
 type batchStore struct {
@@ -43,14 +44,15 @@ func newBatchStore(nextBatchPos uint64, tipHash common.Hash, logger log.Logger) 
 	}
 }
 
-func (s *batchStore) insert(batch *derivation.EspressoBatch) {
+func (s *batchStore) insert(batch *derivation.EspressoBatch, validity BatchValidity) {
 	num := batch.Number()
 	parentHash := batch.BatchHeader.ParentHash
 	hash := batch.Hash()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if num < s.lastFinalizedL2 {
+	// Already finalized, no need to insert
+	if num <= s.lastFinalizedL2 {
 		return
 	}
 
@@ -74,21 +76,22 @@ func (s *batchStore) insert(batch *derivation.EspressoBatch) {
 			order = candidate.order + 1
 		}
 	}
-	s.batches[num][hash] = storedBatch{batch: batch, order: order}
+	s.batches[num][hash] = storedBatch{batch: batch, order: order, validity: validity}
 	s.log.Info(
 		"stored batch",
 		"batchNr", num,
 		"hash", hash,
 		"parentHash", parentHash,
-		"validity", BatchValidity(batch.Validity),
+		"validity", validity,
 		"candidates", len(s.batches[num]),
 	)
 }
 
-// peek returns the batch at the current position that extends the tracked tip,
-// remembering it so advance can promote it without the caller naming it. Takes a
-// write lock because of that bookkeeping.
-func (s *batchStore) peek() *derivation.EspressoBatch {
+// peek returns the batch at the current position that extends the tracked tip and the
+// last verdict about it, remembering the batch so advance can promote it without the
+// caller naming it - hence the write lock. A nil batch comes with a meaningless
+// verdict: BatchDrop is the zero value, not a judgement.
+func (s *batchStore) peek() (*derivation.EspressoBatch, BatchValidity) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -96,7 +99,7 @@ func (s *batchStore) peek() *derivation.EspressoBatch {
 
 	candidates := s.batches[s.nextBatchPos]
 	if len(candidates) == 0 {
-		return nil
+		return nil, BatchDrop
 	}
 	// Unreachable by construction, so fail closed rather than picking a fork by map
 	// iteration order: serving an arbitrary fork is far worse than serving nothing.
@@ -106,7 +109,7 @@ func (s *batchStore) peek() *derivation.EspressoBatch {
 			"blockNr", s.nextBatchPos,
 			"candidates", len(candidates),
 		)
-		return nil
+		return nil, BatchDrop
 	}
 	// Earliest in Espresso order among the candidates extending the tip wins.
 	// We keep track of the order from Espresso
@@ -126,10 +129,33 @@ func (s *batchStore) peek() *derivation.EspressoBatch {
 			"tip", s.tipHash,
 			"candidates", len(candidates),
 		)
-		return nil
+		return nil, BatchDrop
 	}
 	s.lastPeeked = next.batch
-	return next.batch
+	return next.batch, next.validity
+}
+
+// setValidity records a fresh verdict, ignoring a batch the store no longer holds
+// because a prune or a remove raced the re-check. A verdict other than BatchAccept
+// also withdraws the batch as advance's candidate, since peek stamps lastPeeked before
+// the caller has judged what it handed back.
+func (s *batchStore) setValidity(batch *derivation.EspressoBatch, validity BatchValidity) {
+	num := batch.Number()
+	hash := batch.Hash()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if validity != BatchAccept && s.lastPeeked == batch {
+		s.lastPeeked = nil
+	}
+
+	entry, ok := s.batches[num][hash]
+	if !ok {
+		return
+	}
+	entry.validity = validity
+	s.batches[num][hash] = entry
 }
 
 // finalizedL2 returns the highest L2 block number known to be finalized. Batches at
@@ -188,24 +214,14 @@ func (s *batchStore) advance() {
 	s.nextBatchPos++
 }
 
-// resetToSafeBatch repositions the store, dropping any tracked tip in favour of the one the
-// caller knows to be canonical, this is
+// resetToSafeBatch repositions the store onto the tip the caller knows to be
+// canonical, dropping whatever it was tracking.
 func (s *batchStore) resetToSafeBatch(nextBatchPos uint64, tipHash common.Hash) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.nextBatchPos = nextBatchPos
 	s.tipHash = tipHash
 	s.lastPeeked = nil
-}
-
-func (s *batchStore) countLocked() (total int, stale int) {
-	for height, candidates := range s.batches {
-		total += len(candidates)
-		if height <= s.lastFinalizedL2 {
-			stale += len(candidates)
-		}
-	}
-	return total, stale
 }
 
 func (s *batchStore) advanceOnFinalization(finalizedL2 uint64) {
@@ -215,17 +231,23 @@ func (s *batchStore) advanceOnFinalization(finalizedL2 uint64) {
 		return
 	}
 
-	for n := s.lastFinalizedL2; n <= finalizedL2; n++ {
-		delete(s.batches, n)
+	// Ranging over the heights held, not every number up to finalizedL2: the first call
+	// after startup would otherwise iterate the whole chain under the write lock. The
+	// same pass counts what survives, which is every batch the store still holds.
+	remaining := 0
+	for height, candidates := range s.batches {
+		if height <= finalizedL2 {
+			delete(s.batches, height)
+			continue
+		}
+		remaining += len(candidates)
 	}
 	s.lastFinalizedL2 = finalizedL2
 
-	total, stale := s.countLocked()
 	s.log.Info(
 		"pruned finalized slots",
 		"finalizedL2", finalizedL2,
 		"nextBatchPos", s.nextBatchPos,
-		"batches", total,
-		"staleBatches", stale,
+		"batches", remaining,
 	)
 }
