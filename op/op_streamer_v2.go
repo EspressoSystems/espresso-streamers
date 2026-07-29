@@ -43,8 +43,7 @@ type Streamer struct {
 
 	mu sync.RWMutex
 
-	// How often the poll loop runs. Read by poll without synchronization, so it must
-	// not be changed once Start has been called.
+	// How often the poll loop runs
 	pollInterval time.Duration
 
 	// Start/Stop bookkeeping.
@@ -159,8 +158,7 @@ func (s *Streamer) Stop() {
 	<-s.done
 	s.cancel, s.done = nil, nil
 
-	// Safe to read hotShotPos: closing done happens after the poll loop's last write.
-	s.logger.Info("espresso streamer stopped", "hotShotPos", s.hotShotPos)
+	s.logger.Info("espresso streamer stopped")
 }
 
 // Peek returns the batch extending the tip the streamer is tracking, or nil if
@@ -210,7 +208,8 @@ func (s *Streamer) ResetToSafeBatch(syncStatus *eth.SyncStatus) {
 		s.logger.Warn("ignoring reset with empty safe L2 head", "tip", s.store.tip())
 		return
 	}
-	s.store.reset(syncStatus.SafeL2.Number+1, syncStatus.SafeL2.Hash)
+	s.logger.Info("resetting streamer position to safe l2 batch", "safeL2Nr", syncStatus.SafeL2.Number, "safeL2Hash", syncStatus.SafeL2.Hash.Hex())
+	s.store.resetToSafeBatch(syncStatus.SafeL2.Number+1, syncStatus.SafeL2.Hash)
 }
 
 func (s *Streamer) poll(ctx context.Context) {
@@ -234,9 +233,7 @@ func (s *Streamer) poll(ctx context.Context) {
 func (s *Streamer) pollForFinality(ctx context.Context) {
 	syncStatus, err := s.pollerFunc(ctx)
 	if err != nil {
-		if ctx.Err() == nil {
-			s.logger.Warn("failed to fetch sync status", "err", err)
-		}
+		s.logger.Warn("failed to fetch sync status", "err", err)
 		return
 	}
 	if syncStatus == nil {
@@ -273,6 +270,7 @@ func (s *Streamer) fetchEspressoTransactions(ctx context.Context) error {
 	}
 
 	end := s.hotShotPos + HOTSHOT_BLOCK_FETCH_LIMIT
+
 	// `FetchNamespaceTransactionsInRange` is exclusive to finish, so we add 1 to currentBlockHeight
 	if end > finalizedBlockHeight+1 {
 		end = finalizedBlockHeight + 1
@@ -352,30 +350,15 @@ func (s *Streamer) process(ctx context.Context, hotShotHeight uint64, l1Finalize
 	s.store.insert(batch)
 }
 
-// checkBatch mirrors BatchStreamer.CheckBatch: the signer must be the batcher
-// authorized at the batch's l1Finalized, and only then is the self-declared L1
-// origin checked. Keeping that order means an unrecognized signer is dropped
-// rather than left sitting in the store behind a far-future origin.
+// checkBatch verifies the batches l1 origin is finalized, and the correct signer against the contract
 func (s *Streamer) checkBatch(ctx context.Context, batch *derivation.EspressoBatch) BatchValidity {
 	l1Finalized := batch.L1Finalized()
 
-	s.mu.RLock()
-	finalizedL1 := s.finalizedL1
-	s.mu.RUnlock()
-
-	// Make sure the finalized L1 block is initialized before checking the block number.
-	if finalizedL1 == (eth.L1BlockRef{}) {
-		s.logger.Error("Finalized L1 block not initialized")
-		return BatchUndecided
-	}
-
-	// Look up the batcher authorized at l1Finalized, pinning the read to that block
-	// so a lagging L1 client errors instead of silently answering from an older
-	// state. See BatchStreamer.CheckBatch for the full reasoning.
+	// Look up the batcher authorized at l1Finalized which is read from Espresso Header
 	authorizedBatcher, ok := s.batcherAtL1FinalizedCache.Get(l1Finalized)
 	if !ok {
 		batcher, err := s.batchAuthenticatorCaller.EspressoBatcherAtBlock(
-			&bind.CallOpts{Context: ctx, BlockNumber: new(big.Int).SetUint64(l1Finalized)},
+			&bind.CallOpts{Context: ctx},
 			l1Finalized,
 		)
 		if err != nil {
@@ -396,6 +379,16 @@ func (s *Streamer) checkBatch(ctx context.Context, batch *derivation.EspressoBat
 
 	// Signer is authorized. The declared L1 origin must be finalized before we can
 	// verify its hash.
+	s.mu.RLock()
+	finalizedL1 := s.finalizedL1
+	s.mu.RUnlock()
+
+	// Make sure the finalized L1 block is initialized before checking the block number.
+	if finalizedL1 == (eth.L1BlockRef{}) {
+		s.logger.Error("Finalized L1 block not initialized")
+		return BatchUndecided
+	}
+
 	origin := batch.L1Origin()
 	if origin.Number > finalizedL1.Number {
 		s.logger.Warn("L1 origin not finalized, pending resync",

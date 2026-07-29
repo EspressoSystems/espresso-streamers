@@ -10,17 +10,13 @@ import (
 
 type batchStore struct {
 	// batches maps L2 block number -> parent hash -> competing candidates for that
-	// slot, in the order HotShot delivered them.
+	// slot, in the order Espresso delivered them.
 	batches map[uint64]map[common.Hash][]*derivation.EspressoBatch
 
 	mu           sync.RWMutex
 	nextBatchPos uint64
 
-	// tipHash is the block hash of the last batch handed to the consumer, i.e. the
-	// parent hash the next batch must declare. Tracked here so the consumer does not
-	// have to name the fork it is on with every peek. Always set: seeded from the L2
-	// client at construction, then only ever replaced by a consumed batch's hash or by
-	// reset.
+	// tipHash is the block hash of the last batch handed to the consumer
 	tipHash common.Hash
 	// lastPeeked is the batch most recently returned by peek, remembered so advance
 	// can promote exactly that batch to the tip rather than re-selecting it.
@@ -97,7 +93,7 @@ func (s *batchStore) peek() *derivation.EspressoBatch {
 	// iteration order: serving an arbitrary fork is far worse than serving nothing.
 	if s.tipHash == (common.Hash{}) {
 		s.log.Error(
-			"batchStore: tip hash unset, refusing to select a fork",
+			"tip hash unset, refusing to select a fork",
 			"blockNr", s.nextBatchPos,
 			"forks", len(forks),
 		)
@@ -106,14 +102,14 @@ func (s *batchStore) peek() *derivation.EspressoBatch {
 	candidates := forks[s.tipHash]
 	if len(candidates) == 0 {
 		s.log.Info(
-			"batchStore: no fork matches tip",
+			"no fork matches tip",
 			"blockNr", s.nextBatchPos,
 			"tip", s.tipHash,
 			"parents", len(forks),
 		)
 		return nil
 	}
-	// Earliest in HotShot order wins.
+	// Earliest in Espresso order wins.
 	s.lastPeeked = candidates[0]
 	return candidates[0]
 }
@@ -168,7 +164,7 @@ func (s *batchStore) advance() {
 		// Advancing without having handed out a batch leaves the tip pointing at the
 		// consumer's previous block, so nothing at the new position can extend it.
 		s.log.Warn(
-			"batchStore: advanced without a peeked batch, tip is now stale",
+			"advanced without a peeked batch, tip is now stale",
 			"blockNr", s.nextBatchPos,
 			"tip", s.tipHash,
 		)
@@ -179,10 +175,9 @@ func (s *batchStore) advance() {
 	s.nextBatchPos++
 }
 
-// reset repositions the store, dropping any tracked tip in favour of the one the
-// caller knows to be canonical. Used on startup and after an L2 reorg, which the
-// store cannot observe on its own.
-func (s *batchStore) reset(nextBatchPos uint64, tipHash common.Hash) {
+// resetToSafeBatch repositions the store, dropping any tracked tip in favour of the one the
+// caller knows to be canonical, this is
+func (s *batchStore) resetToSafeBatch(nextBatchPos uint64, tipHash common.Hash) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.nextBatchPos = nextBatchPos
@@ -216,7 +211,7 @@ func (s *batchStore) advanceOnFinalization(finalizedL2 uint64) {
 
 	total, stale := s.countLocked()
 	s.log.Info(
-		"batchStore: pruned finalized slots",
+		"pruned finalized slots",
 		"finalizedL2", finalizedL2,
 		"nextBatchPos", s.nextBatchPos,
 		"batches", total,
