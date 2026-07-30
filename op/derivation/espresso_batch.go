@@ -23,6 +23,14 @@ type EspressoBatch struct {
 	Batch         derive.SingularBatch
 	L1InfoDeposit *types.Transaction
 	SignerAddress common.Address
+	// l1Finalized is the espresso network view of the finalized L1 block at
+	// the time that it confirmed this batch. It is used solely to anchor the
+	// active batcher lookup for this batch, so that batcher verification is
+	// deterministic across all streamer instances. Previously the blocks' L1
+	// origin was used, but this could be chosen by an attacker to be any
+	// arbitrary block in the past, allowing compromised espresso batcher keys
+	// to be re-used regardless of age.
+	l1Finalized uint64
 }
 
 func (b EspressoBatch) Number() uint64 {
@@ -44,6 +52,14 @@ func (b EspressoBatch) Header() *types.Header {
 func (b EspressoBatch) Hash() common.Hash {
 	hash := crypto.Keccak256Hash(b.BatchHeader.Hash().Bytes(), b.L1InfoDeposit.Hash().Bytes())
 	return hash
+}
+
+func (b EspressoBatch) L1Finalized() uint64 {
+	return b.l1Finalized
+}
+
+func (b *EspressoBatch) SetL1Finalized(l1Finalized uint64) {
+	b.l1Finalized = l1Finalized
 }
 
 func (b *EspressoBatch) ToEspressoTransaction(ctx context.Context, namespace uint64, signer opCrypto.ChainSigner) (*espressoCommon.Transaction, error) {
@@ -91,13 +107,13 @@ func BlockToEspressoBatch(rollupCfg *rollup.Config, block *types.Block) (*Espres
 // unmarshal an Espresso transaction into an EspressoBatch.
 // The signer address is recovered from the signature and stored on the batch
 // for later verification in CheckBatch (two-phase verification).
-func CreateEspressoBatchUnmarshaler() func(data []byte) (*EspressoBatch, error) {
-	return func(data []byte) (*EspressoBatch, error) {
-		return UnmarshalEspressoTransaction(data)
+func CreateEspressoBatchUnmarshaler() func(data []byte, l1Finalized uint64) (*EspressoBatch, error) {
+	return func(data []byte, l1Finalized uint64) (*EspressoBatch, error) {
+		return UnmarshalEspressoTransaction(data, l1Finalized)
 	}
 }
 
-func UnmarshalEspressoTransaction(data []byte) (*EspressoBatch, error) {
+func UnmarshalEspressoTransaction(data []byte, l1Finalized uint64) (*EspressoBatch, error) {
 	if len(data) < crypto.SignatureLength {
 		return nil, fmt.Errorf("transaction data too short: %d bytes, need at least %d", len(data), crypto.SignatureLength)
 	}
@@ -128,6 +144,7 @@ func UnmarshalEspressoTransaction(data []byte) (*EspressoBatch, error) {
 	if batch.L1InfoDeposit == nil {
 		return nil, fmt.Errorf("batch is missing the L1 info deposit transaction")
 	}
+	batch.l1Finalized = l1Finalized
 
 	return &batch, nil
 }
