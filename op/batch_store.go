@@ -49,10 +49,14 @@ func (s *batchStore) insert(batch *derivation.EspressoBatch, validity BatchValid
 	parentHash := batch.BatchHeader.ParentHash
 	hash := batch.Hash()
 
+	// Every log below is emitted after unlocking, deliberately: this runs once per batch
+	// off the HotShot loop, and peek takes the same write lock, so a log write held under
+	// it would stall the derivation caller.
 	s.mu.Lock()
-	defer s.mu.Unlock()
+
 	// Already finalized, no need to insert
 	if num <= s.lastFinalizedL2 {
+		s.mu.Unlock()
 		return
 	}
 
@@ -61,6 +65,7 @@ func (s *batchStore) insert(batch *derivation.EspressoBatch, validity BatchValid
 	}
 	// Filter duplicate hashes
 	if _, exists := s.batches[num][hash]; exists {
+		s.mu.Unlock()
 		s.log.Info(
 			"ignoring duplicate batch",
 			"batchNr", num,
@@ -77,13 +82,16 @@ func (s *batchStore) insert(batch *derivation.EspressoBatch, validity BatchValid
 		}
 	}
 	s.batches[num][hash] = storedBatch{batch: batch, order: order, validity: validity}
+	candidates := len(s.batches[num])
+	s.mu.Unlock()
+
 	s.log.Info(
 		"stored batch",
 		"batchNr", num,
 		"hash", hash,
 		"parentHash", parentHash,
 		"validity", validity,
-		"candidates", len(s.batches[num]),
+		"candidates", candidates,
 	)
 }
 
@@ -92,22 +100,26 @@ func (s *batchStore) insert(batch *derivation.EspressoBatch, validity BatchValid
 // caller naming it - hence the write lock. A nil batch comes with a meaningless
 // verdict: BatchDrop is the zero value, not a judgement.
 func (s *batchStore) peek() (*derivation.EspressoBatch, BatchValidity) {
+	// As in insert, logs are emitted after unlocking so they do not hold off the inserts
+	// coming from the HotShot loop.
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	s.lastPeeked = nil
 
 	candidates := s.batches[s.nextBatchPos]
 	if len(candidates) == 0 {
+		s.mu.Unlock()
 		return nil, BatchDrop
 	}
 	// Unreachable by construction, so fail closed rather than picking a fork by map
 	// iteration order: serving an arbitrary fork is far worse than serving nothing.
 	if s.tipHash == (common.Hash{}) {
+		blockNr, count := s.nextBatchPos, len(candidates)
+		s.mu.Unlock()
 		s.log.Error(
 			"tip hash unset, refusing to select a fork",
-			"blockNr", s.nextBatchPos,
-			"candidates", len(candidates),
+			"blockNr", blockNr,
+			"candidates", count,
 		)
 		return nil, BatchDrop
 	}
@@ -123,15 +135,18 @@ func (s *batchStore) peek() (*derivation.EspressoBatch, BatchValidity) {
 		}
 	}
 	if next.batch == nil {
+		blockNr, tip, count := s.nextBatchPos, s.tipHash, len(candidates)
+		s.mu.Unlock()
 		s.log.Info(
 			"no fork matches tip",
-			"blockNr", s.nextBatchPos,
-			"tip", s.tipHash,
-			"candidates", len(candidates),
+			"blockNr", blockNr,
+			"tip", tip,
+			"candidates", count,
 		)
 		return nil, BatchDrop
 	}
 	s.lastPeeked = next.batch
+	s.mu.Unlock()
 	return next.batch, next.validity
 }
 
@@ -198,20 +213,25 @@ func (s *batchStore) remove(batch *derivation.EspressoBatch) {
 // becomes the tip, so the next peek looks for its child.
 func (s *batchStore) advance() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.lastPeeked == nil {
-		// Advancing without having handed out a batch leaves the tip pointing at the
-		// consumer's previous block, so nothing at the new position can extend it.
-		s.log.Warn(
-			"advanced without a peeked batch, tip is now stale",
-			"blockNr", s.nextBatchPos,
-			"tip", s.tipHash,
-		)
-	} else {
+
+	// Advancing without having handed out a batch leaves the tip pointing at the
+	// consumer's previous block, so nothing at the new position can extend it.
+	stale := s.lastPeeked == nil
+	blockNr, tip := s.nextBatchPos, s.tipHash
+	if !stale {
 		s.tipHash = s.lastPeeked.BatchHeader.Hash()
 		s.lastPeeked = nil
 	}
 	s.nextBatchPos++
+	s.mu.Unlock()
+
+	if stale {
+		s.log.Warn(
+			"advanced without a peeked batch, tip is now stale",
+			"blockNr", blockNr,
+			"tip", tip,
+		)
+	}
 }
 
 // setBatchPosition repositions the store onto the tip the caller knows to be
@@ -226,8 +246,8 @@ func (s *batchStore) setBatchPosition(nextBatchPos uint64, tipHash common.Hash) 
 
 func (s *batchStore) advanceOnFinalization(finalizedL2 uint64) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if finalizedL2 <= s.lastFinalizedL2 {
+		s.mu.Unlock()
 		return
 	}
 
@@ -243,11 +263,13 @@ func (s *batchStore) advanceOnFinalization(finalizedL2 uint64) {
 		remaining += len(candidates)
 	}
 	s.lastFinalizedL2 = finalizedL2
+	nextBatchPos := s.nextBatchPos
+	s.mu.Unlock()
 
 	s.log.Info(
 		"pruned finalized slots",
 		"finalizedL2", finalizedL2,
-		"nextBatchPos", s.nextBatchPos,
+		"nextBatchPos", nextBatchPos,
 		"batches", remaining,
 	)
 }

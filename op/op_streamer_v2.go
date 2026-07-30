@@ -254,6 +254,7 @@ func (s *Streamer) pollFinality(ctx context.Context) {
 	ticker := time.NewTicker(s.finalityInterval)
 	defer ticker.Stop()
 
+	var lastFinalizedL2 uint64
 	for {
 		select {
 		case <-ctx.Done():
@@ -262,8 +263,13 @@ func (s *Streamer) pollFinality(ctx context.Context) {
 		}
 
 		callCtx, cancel := context.WithTimeout(ctx, pollRPCTimeout)
-		s.pollForFinality(callCtx)
+		finalizedL2 := s.pollForFinality(callCtx)
 		cancel()
+
+		if finalizedL2 > lastFinalizedL2 {
+			lastFinalizedL2 = finalizedL2
+			s.store.advanceOnFinalization(finalizedL2)
+		}
 	}
 }
 
@@ -298,19 +304,22 @@ func (s *Streamer) pollHotShot(ctx context.Context) {
 	}
 }
 
-func (s *Streamer) pollForFinality(ctx context.Context) {
+// pollForFinality refreshes the streamer's view of L1 finality and the fallback HotShot
+// position, returning the finalized L2 height it saw so the caller can decide whether the
+// store needs pruning. It returns 0 when the sync status could not be used.
+func (s *Streamer) pollForFinality(ctx context.Context) uint64 {
 	syncStatus, err := s.pollerFunc(ctx)
 	if err != nil {
 		s.logger.Warn("failed to fetch sync status", "err", err)
-		return
+		return 0
 	}
 	if syncStatus == nil {
 		s.logger.Warn("sync status is nil")
-		return
+		return 0
 	}
 	if syncStatus.FinalizedL1 == (eth.L1BlockRef{}) {
 		s.logger.Warn("finalized L1 block is empty")
-		return
+		return 0
 	}
 
 	s.mu.Lock()
@@ -320,18 +329,18 @@ func (s *Streamer) pollForFinality(ctx context.Context) {
 		s.mu.Unlock()
 		s.logger.Warn("ignoring regressed finalized L1 block",
 			"current", current.Number, "reported", syncStatus.FinalizedL1.Number)
-		return
+		return 0
 	}
 	s.finalizedL1 = syncStatus.FinalizedL1
 	s.mu.Unlock()
 
-	s.store.advanceOnFinalization(syncStatus.FinalizedL2.Number)
-
 	// Nothing is finalized yet, so there is no L1 origin to pin a HotShot height to.
 	if syncStatus.FinalizedL2 == (eth.L2BlockRef{}) {
-		return
+		return 0
 	}
 	s.confirmEspressoBlockHeight(ctx, syncStatus.FinalizedL2.L1Origin)
+
+	return syncStatus.FinalizedL2.Number
 }
 
 // confirmEspressoBlockHeight pins the HotShot height that is guaranteed not to hold
