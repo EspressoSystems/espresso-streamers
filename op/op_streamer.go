@@ -251,7 +251,9 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockR
 
 // CheckBatch validates a batch: its signer must be the batcher authorized at the
 // batch's l1Finalized (the finalized L1 block reported by the HotShot header that
-// carried it).
+// carried it), and its declared L1 origin must match a real L1 block. Both L1
+// heights must be finalized from our local node's point of view before a batch can
+// be decided; until then it is BatchUndecided.
 func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidity {
 	l1Finalized := batch.L1Finalized()
 
@@ -268,6 +270,13 @@ func (s *BatchStreamer[B]) CheckBatch(ctx context.Context, batch B) BatchValidit
 		return BatchUndecided
 	}
 	origin := (batch).L1Origin()
+
+	// Ensure Espresso L1 finalized is actually finalized
+	if l1Finalized > s.FinalizedL1.Number {
+		s.Log.Warn("Espresso finalized L1 block is ahead of our finalized L1 view, pending resync",
+			"finalized L1 block number", s.FinalizedL1.Number, "l1Finalized", l1Finalized)
+		return BatchUndecided
+	}
 
 	// Look up the batcher authorized at l1Finalized which was read from Espresso Headers
 	authorizedBatcher, ok := s.batcherAtL1FinalizedCache.Get(l1Finalized)

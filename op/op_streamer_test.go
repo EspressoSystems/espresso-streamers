@@ -132,9 +132,14 @@ type MockStreamerSource struct {
 	// rotations keyed by L1 block.
 	EspressoBatcherByBlock func(l1Block uint64) common.Address
 	// HotShotL1Finalized overrides the finalized L1 block reported in the HotShot
-	// header for a given HotShot block height in FetchHeadersByRange. Heights not
-	// present default to the block height itself.
+	// header for a given HotShot block height in FetchHeadersByRange. Set an entry
+	// to model HotShot's view of L1 finality diverging from our node's.
 	HotShotL1Finalized map[uint64]uint64
+	// l1FinalizedAtHeight records FinalizedL1.Number as of when each HotShot
+	// height's transaction data was registered, i.e. L1 finality as HotShot saw it
+	// when producing that block. FetchHeadersByRange reports this, so a header
+	// never claims a finality later than the one in effect when it was created.
+	l1FinalizedAtHeight map[uint64]uint64
 }
 
 // FetchNamespaceTransactionsInRange implements EspressoClient.
@@ -170,14 +175,18 @@ func (m *MockStreamerSource) FetchNamespaceTransactionsInRange(ctx context.Conte
 
 // FetchHeadersByRange implements EspressoClient. It returns a HotShot header for
 // each height in [fromHeight, toHeight] carrying the height and a finalized L1
-// block (from HotShotL1Finalized, defaulting to the height itself).
+// block: the HotShotL1Finalized override if set, else the L1 finality recorded when
+// that height's data was registered, else the mock's current FinalizedL1.
 func (m *MockStreamerSource) FetchHeadersByRange(ctx context.Context, fromHeight uint64, toHeight uint64) ([]espressoCommon.HeaderImpl, error) {
 	if fromHeight > toHeight {
 		return nil, ErrNotFound
 	}
 	var headers []espressoCommon.HeaderImpl
 	for height := fromHeight; height <= toHeight; height++ {
-		l1Finalized := height
+		l1Finalized := m.FinalizedL1.Number
+		if v, ok := m.l1FinalizedAtHeight[height]; ok {
+			l1Finalized = v
+		}
 		if v, ok := m.HotShotL1Finalized[height]; ok {
 			l1Finalized = v
 		}
@@ -199,6 +208,7 @@ func NewMockStreamerSource() *MockStreamerSource {
 		SafeL2:                 createL2BlockRef(0, finalizedL1),
 		EspTransactionData:     make(map[EspBlockAndNamespace]espressoClient.TransactionsInBlock),
 		finalizedHeightHistory: make(map[uint64]uint64),
+		l1FinalizedAtHeight:    make(map[uint64]uint64),
 		LatestEspHeight:        0,
 	}
 }
@@ -250,8 +260,14 @@ func (m *MockStreamerSource) AddEspressoTransactionData(height, namespace uint64
 	if m.EspTransactionData == nil {
 		m.EspTransactionData = make(map[EspBlockAndNamespace]espressoClient.TransactionsInBlock)
 	}
+	if m.l1FinalizedAtHeight == nil {
+		m.l1FinalizedAtHeight = make(map[uint64]uint64)
+	}
 
 	m.EspTransactionData[BlockAndNamespace(height, namespace)] = txData
+	// The HotShot block carrying this data is produced now, so its header reports
+	// L1 finality as of now.
+	m.l1FinalizedAtHeight[height] = m.FinalizedL1.Number
 
 	if m.LatestEspHeight < height {
 		m.LatestEspHeight = height
@@ -1893,4 +1909,68 @@ func TestCheckBatchAuthorizesAgainstL1FinalizedNotOrigin(t *testing.T) {
 	batch.SetL1Finalized(oldOrigin)
 	require.Equal(t, BatchValidity(BatchAccept), streamer.CheckBatch(ctx, *batch),
 		"authorizing against the old origin would accept the forged batch (the vulnerability)")
+}
+
+// TestCheckBatchWaitsForLocalL1Finality covers the two L1 finality requirements in
+// CheckBatch and the order they are applied in. Batcher authorization is resolved at
+// the HotShot header's finalized L1 block, so our local view must have finalized that
+// height before the answer can be trusted. The batch's own declared origin is checked
+// only after the signer, so a batch from an unauthorized key naming a far-future
+// origin is dropped rather than parked as undecided at the head of the buffer.
+func TestCheckBatchWaitsForLocalL1Finality(t *testing.T) {
+	ctx := context.Background()
+
+	batcher := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	imposter := common.HexToAddress("0x4444444444444444444444444444444444444444")
+
+	const originNumber = uint64(50)
+	const l1Finalized = uint64(80)
+
+	// A batch at L2 number 1 (== nextBatchPos below) carried by a HotShot header
+	// that reports l1Finalized as the finalized L1 block.
+	makeBatch := func(signer common.Address, origin uint64) derivation.EspressoBatch {
+		b := createEspressoBatch(&derive.SingularBatch{
+			EpochNum:  rollup.Epoch(origin),
+			EpochHash: createHashFromHeight(origin),
+			Timestamp: 1,
+		})
+		b.SignerAddress = signer
+		b.SetL1Finalized(l1Finalized)
+		return *b
+	}
+
+	newStreamer := func(finalizedL1 uint64) *BatchStreamer[derivation.EspressoBatch] {
+		_, streamer := setupStreamerTesting(1, batcher)
+		streamer.nextBatchPos = 1
+		streamer.FinalizedL1 = createL1BlockRef(finalizedL1)
+		return streamer
+	}
+
+	t.Run("espresso finalized L1 ahead of local view: undecided", func(t *testing.T) {
+		streamer := newStreamer(l1Finalized - 1)
+		require.Equal(t, BatchValidity(BatchUndecided),
+			streamer.CheckBatch(ctx, makeBatch(batcher, originNumber)),
+			"must wait for our L1 view to finalize the height the batcher is authorized at")
+	})
+
+	t.Run("local view caught up: accepted", func(t *testing.T) {
+		streamer := newStreamer(l1Finalized)
+		require.Equal(t, BatchValidity(BatchAccept),
+			streamer.CheckBatch(ctx, makeBatch(batcher, originNumber)))
+	})
+
+	t.Run("unfinalized origin from authorized batcher: undecided", func(t *testing.T) {
+		streamer := newStreamer(l1Finalized)
+		require.Equal(t, BatchValidity(BatchUndecided),
+			streamer.CheckBatch(ctx, makeBatch(batcher, l1Finalized+1)),
+			"an authorized batcher's batch waits for its origin to finalize")
+	})
+
+	t.Run("far-future origin from unauthorized signer: dropped", func(t *testing.T) {
+		streamer := newStreamer(l1Finalized)
+		require.Equal(t, BatchValidity(BatchDrop),
+			streamer.CheckBatch(ctx, makeBatch(imposter, l1Finalized+1_000_000)),
+			"an unauthorized signer must be dropped on the spot; an origin it declares "+
+				"itself must not be able to park it at the head as undecided")
+	})
 }
