@@ -80,9 +80,14 @@ type MockStreamerSource struct {
 	// rotations keyed by L1 block.
 	EspressoBatcherByBlock func(l1Block uint64) common.Address
 	// HotShotL1Finalized overrides the finalized L1 block reported in the HotShot
-	// header for a given HotShot block height in FetchHeadersByRange. Heights not
-	// present default to the block height itself.
+	// header for a given HotShot block height in FetchHeadersByRange. Set an entry
+	// to model HotShot's view of L1 finality diverging from our node's.
 	HotShotL1Finalized map[uint64]uint64
+	// l1FinalizedAtHeight records FinalizedL1.Number as of when each HotShot
+	// height's transaction data was registered, i.e. L1 finality as HotShot saw it
+	// when producing that block. FetchHeadersByRange reports this, so a header
+	// never claims a finality later than the one in effect when it was created.
+	l1FinalizedAtHeight map[uint64]uint64
 }
 
 // FetchNamespaceTransactionsInRange implements EspressoClient.
@@ -120,14 +125,18 @@ func (m *MockStreamerSource) FetchNamespaceTransactionsInRange(ctx context.Conte
 
 // FetchHeadersByRange implements EspressoClient. It returns a HotShot header for
 // each height in [fromHeight, toHeight) carrying the height and a finalized L1
-// block (from HotShotL1Finalized, defaulting to the height itself).
+// block: the HotShotL1Finalized override if set, else the L1 finality recorded when
+// that height's data was registered, else the mock's current FinalizedL1.
 func (m *MockStreamerSource) FetchHeadersByRange(ctx context.Context, fromHeight uint64, toHeight uint64) ([]espressoCommon.HeaderImpl, error) {
 	if fromHeight > toHeight {
 		return nil, ErrNotFound
 	}
 	var headers []espressoCommon.HeaderImpl
 	for height := fromHeight; height < toHeight; height++ {
-		l1Finalized := height
+		l1Finalized := m.FinalizedL1.Number
+		if v, ok := m.l1FinalizedAtHeight[height]; ok {
+			l1Finalized = v
+		}
 		if v, ok := m.HotShotL1Finalized[height]; ok {
 			l1Finalized = v
 		}
@@ -149,6 +158,7 @@ func NewMockStreamerSource() *MockStreamerSource {
 		SafeL2:                 createL2BlockRef(0, finalizedL1),
 		EspTransactionData:     make(map[EspBlockAndNamespace]espressoClient.TransactionsInBlock),
 		finalizedHeightHistory: make(map[uint64]uint64),
+		l1FinalizedAtHeight:    make(map[uint64]uint64),
 		LatestEspHeight:        0,
 	}
 }
@@ -200,8 +210,14 @@ func (m *MockStreamerSource) AddEspressoTransactionData(height, namespace uint64
 	if m.EspTransactionData == nil {
 		m.EspTransactionData = make(map[EspBlockAndNamespace]espressoClient.TransactionsInBlock)
 	}
+	if m.l1FinalizedAtHeight == nil {
+		m.l1FinalizedAtHeight = make(map[uint64]uint64)
+	}
 
 	m.EspTransactionData[BlockAndNamespace(height, namespace)] = txData
+	// The HotShot block carrying this data is produced now, so its header reports
+	// L1 finality as of now.
+	m.l1FinalizedAtHeight[height] = m.FinalizedL1.Number
 
 	if m.LatestEspHeight < height {
 		m.LatestEspHeight = height

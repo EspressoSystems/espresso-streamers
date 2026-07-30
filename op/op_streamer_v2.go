@@ -354,7 +354,11 @@ func (s *Streamer) process(ctx context.Context, hotShotHeight uint64, l1Finalize
 	s.store.insert(batch, validity)
 }
 
-// checkBatch verifies the batches l1 origin is finalized, and the correct signer against the contract
+// checkBatch validates a batch: its signer must be the batcher authorized at the
+// batch's L1Finalized (the finalized L1 block reported by the HotShot header that
+// carried it), and its declared L1 origin must match a real L1 block. Both L1
+// heights must be finalized from our local node's point of view before a batch can
+// be decided; until then it is BatchUndecided.
 func (s *Streamer) checkBatch(ctx context.Context, batch *derivation.EspressoBatch) BatchValidity {
 	// A batch at or below the finalized L2 head has already been derived, so there is
 	// nothing to do with it.
@@ -368,14 +372,22 @@ func (s *Streamer) checkBatch(ctx context.Context, batch *derivation.EspressoBat
 	finalizedL1 := s.finalizedL1
 	s.mu.RUnlock()
 
+	// Make sure the finalized L1 block is initialized before comparing block numbers.
+	if finalizedL1 == (eth.L1BlockRef{}) {
+		s.logger.Error("Finalized L1 block not initialized")
+		return BatchUndecided
+	}
+
+	// Ensure Espresso L1 finalized is actually finalized
+	if l1Finalized > finalizedL1.Number {
+		s.logger.Warn("HotShot header reports an L1 finality we have not observed yet, pending resync",
+			"headerL1Finalized", l1Finalized, "ourL1Finalized", finalizedL1.Number)
+		return BatchUndecided
+	}
+
 	// Look up the batcher authorized at l1Finalized which is read from Espresso Header
 	authorizedBatcher, ok := s.batcherAtL1FinalizedCache.Get(l1Finalized)
 	if !ok {
-		if l1Finalized > finalizedL1.Number {
-			s.logger.Warn("HotShot header reports an L1 finality we have not observed yet, pending resync",
-				"headerL1Finalized", l1Finalized, "ourL1Finalized", finalizedL1.Number)
-			return BatchUndecided
-		}
 		batcher, err := s.batchAuthenticatorCaller.EspressoBatcherAtBlock(
 			&bind.CallOpts{Context: ctx},
 			l1Finalized,
@@ -397,14 +409,9 @@ func (s *Streamer) checkBatch(ctx context.Context, batch *derivation.EspressoBat
 	}
 
 	// Signer is authorized. The declared L1 origin must be finalized before we can
-	// verify its hash.
-
-	// Make sure the finalized L1 block is initialized before checking the block number.
-	if finalizedL1 == (eth.L1BlockRef{}) {
-		s.logger.Error("Finalized L1 block not initialized")
-		return BatchUndecided
-	}
-
+	// verify its hash. This stays after the signer check deliberately: origin is
+	// declared by the batch, so an unauthorized batch naming a far-future origin
+	// would otherwise be stored as undecided instead of being dropped outright.
 	origin := batch.L1Origin()
 	if origin.Number > finalizedL1.Number {
 		s.logger.Warn("L1 origin not finalized, pending resync",

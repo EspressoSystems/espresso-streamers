@@ -23,7 +23,16 @@ type EspressoBatch struct {
 	Batch         derive.SingularBatch
 	L1InfoDeposit *types.Transaction
 	SignerAddress common.Address
-	// L1Finalized is attached locally after decoding
+	// L1Finalized is the espresso network view of the finalized L1 block at
+	// the time that it confirmed this batch. It is used solely to anchor the
+	// active batcher lookup for this batch, so that batcher verification is
+	// deterministic across all streamer instances. Previously the blocks' L1
+	// origin was used, but this could be chosen by an attacker to be any
+	// arbitrary block in the past, allowing compromised espresso batcher keys
+	// to be re-used regardless of age.
+	//
+	// It is attached locally after decoding rather than carried in the payload,
+	// hence excluded from the RLP encoding.
 	L1Finalized uint64 `rlp:"-"`
 }
 

@@ -204,7 +204,9 @@ func TestCheckBatchAuthorizesAgainstL1FinalizedNotOrigin(t *testing.T) {
 func TestCheckBatchUndecidedUntilOriginFinalized(t *testing.T) {
 	batcher := common.HexToAddress("0x1111111111111111111111111111111111111111")
 	const originNumber = uint64(50)
-	const l1FinalizedNumber = uint64(80)
+	// Below both finality points exercised below, so the anchor is never what
+	// leaves this batch undecided — the origin is.
+	const l1FinalizedNumber = uint64(40)
 
 	_, streamer := newTestStreamer(t, 1, batcher, 1)
 	streamer.batcherAtL1FinalizedCache.Add(l1FinalizedNumber, batcher)
@@ -246,6 +248,62 @@ func TestCheckBatchUndecidedBeforeAnyFinalizedL1(t *testing.T) {
 	batch := chainedBatch(10, common.Hash{}, batcher, 50)
 	batch.L1Finalized = 80
 	require.Equal(t, BatchUndecided, streamer.checkBatch(context.Background(), batch))
+}
+
+// TestCheckBatchWaitsForLocalL1Finality covers the two L1 finality requirements in
+// checkBatch and the order they are applied in. Batcher authorization is resolved at
+// the HotShot header's finalized L1 block, so our local view must have finalized that
+// height before the answer can be trusted — including when the batcher for that height
+// is already cached. The batch's own declared origin is checked only after the signer,
+// so a batch from an unauthorized key naming a far-future origin is dropped rather
+// than parked in the store as undecided.
+func TestCheckBatchWaitsForLocalL1Finality(t *testing.T) {
+	ctx := context.Background()
+
+	batcher := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	imposter := common.HexToAddress("0x4444444444444444444444444444444444444444")
+
+	const originNumber = uint64(50)
+	const l1Finalized = uint64(80)
+
+	// The anchor's batcher is pre-cached in every case, so nothing here depends on
+	// the finality guard happening to sit in front of the contract call.
+	newStreamer := func(finalizedL1 uint64) *Streamer {
+		_, streamer := newTestStreamer(t, 1, batcher, 1)
+		streamer.finalizedL1 = createL1BlockRef(finalizedL1)
+		streamer.batcherAtL1FinalizedCache.Add(l1Finalized, batcher)
+		return streamer
+	}
+
+	makeBatch := func(signer common.Address, origin uint64) *derivation.EspressoBatch {
+		b := chainedBatch(10, common.Hash{}, signer, origin)
+		b.L1Finalized = l1Finalized
+		return b
+	}
+
+	t.Run("espresso finalized L1 ahead of local view: undecided", func(t *testing.T) {
+		streamer := newStreamer(l1Finalized - 1)
+		require.Equal(t, BatchUndecided, streamer.checkBatch(ctx, makeBatch(batcher, originNumber)),
+			"must wait for our L1 view to finalize the height the batcher is authorized at")
+	})
+
+	t.Run("local view caught up: accepted", func(t *testing.T) {
+		streamer := newStreamer(l1Finalized)
+		require.Equal(t, BatchAccept, streamer.checkBatch(ctx, makeBatch(batcher, originNumber)))
+	})
+
+	t.Run("unfinalized origin from authorized batcher: undecided", func(t *testing.T) {
+		streamer := newStreamer(l1Finalized)
+		require.Equal(t, BatchUndecided, streamer.checkBatch(ctx, makeBatch(batcher, l1Finalized+1)),
+			"an authorized batcher's batch waits for its origin to finalize")
+	})
+
+	t.Run("far-future origin from unauthorized signer: dropped", func(t *testing.T) {
+		streamer := newStreamer(l1Finalized)
+		require.Equal(t, BatchDrop, streamer.checkBatch(ctx, makeBatch(imposter, l1Finalized+1_000_000)),
+			"an unauthorized signer must be dropped on the spot; an origin it declares "+
+				"itself must not be able to park it in the store as undecided")
+	})
 }
 
 // TestCheckBatchPastAtOrBelowFinalizedL2 covers batches that finalization has already
