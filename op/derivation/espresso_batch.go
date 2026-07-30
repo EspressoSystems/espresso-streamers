@@ -23,14 +23,14 @@ type EspressoBatch struct {
 	Batch         derive.SingularBatch
 	L1InfoDeposit *types.Transaction
 	SignerAddress common.Address
- 	// l1Finalized is the espresso network view of the finalized L1 block at
- 	// the time that it confirmed this batch. It is used solely to anchor the
- 	// active batcher lookup for this batch, so that batcher verification is
- 	// deterministic across all streamer instances. Previously the blocks' L1
- 	// origin was used, but this could be chosen by an attacker to be any
- 	// arbitrary block in the past, allowing compromised espresso batcher keys
- 	// to be re-used regardless of age.
- 	l1Finalized   uint64
+	// l1Finalized is the espresso network view of the finalized L1 block at
+	// the time that it confirmed this batch. It is used solely to anchor the
+	// active batcher lookup for this batch, so that batcher verification is
+	// deterministic across all streamer instances. Previously the blocks' L1
+	// origin was used, but this could be chosen by an attacker to be any
+	// arbitrary block in the past, allowing compromised espresso batcher keys
+	// to be re-used regardless of age.
+	l1Finalized uint64
 }
 
 func (b EspressoBatch) Number() uint64 {
