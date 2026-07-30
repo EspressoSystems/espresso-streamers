@@ -214,9 +214,9 @@ func (s *batchStore) advance() {
 	s.nextBatchPos++
 }
 
-// resetToSafeBatch repositions the store onto the tip the caller knows to be
+// setBatchPosition repositions the store onto the tip the caller knows to be
 // canonical, dropping whatever it was tracking.
-func (s *batchStore) resetToSafeBatch(nextBatchPos uint64, tipHash common.Hash) {
+func (s *batchStore) setBatchPosition(nextBatchPos uint64, tipHash common.Hash) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.nextBatchPos = nextBatchPos

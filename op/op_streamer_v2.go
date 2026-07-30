@@ -19,9 +19,13 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 )
 
+const pollRPCTimeout = 10 * time.Second
+
+// defaultFinalityInterval paces the finality loop.
+const defaultFinalityInterval = 1 * time.Second
+
 type Streamer struct {
-	espressoClient EspressoClient
-	// TODO: unused, needed?
+	espressoClient           EspressoClient
 	espressoLightClient      LightClientCallerInterface
 	batchAuthenticatorCaller *bindings.BatchAuthenticatorCaller
 	rollupL1Client           L1Client
@@ -30,7 +34,13 @@ type Streamer struct {
 
 	store *batchStore
 
+	// Next HotShot height to read from. Only the poll goroutine touches it.
 	hotShotPos uint64
+
+	// HotShot height guaranteed not to contain batches this streamer has yet to see,
+	// read from the light client at the finalized L2 block's L1 origin. Guarded by mu
+	// so GetFallbackHotshotPos can read it off the poll goroutine.
+	fallbackHotShotPos uint64
 
 	logger log.Logger
 
@@ -44,13 +54,17 @@ type Streamer struct {
 
 	mu sync.RWMutex
 
-	// How often the poll loop runs
-	pollInterval time.Duration
+	// How long the HotShot loop waits before retrying after a failed fetch. It does
+	// not pace that loop otherwise: with work available it runs hot.
+	retryTime time.Duration
+
+	// How often the finality loop refreshes its view of L1/L2 finality.
+	finalityInterval time.Duration
 
 	// Start/Stop bookkeeping.
 	lifecycleMu sync.Mutex
 	cancel      context.CancelFunc
-	done        chan struct{}
+	wg          sync.WaitGroup
 }
 
 // ErrAlreadyStarted is returned by Start when the poll loop is already running.
@@ -69,7 +83,7 @@ func NewStreamer(
 	namespace uint64,
 	unmarshal func([]byte, uint64) (*derivation.EspressoBatch, error),
 	pollerFunc func(context.Context) (*eth.SyncStatus, error),
-	pollInterval time.Duration,
+	retryTime time.Duration,
 	logger log.Logger,
 	originHotShotPos uint64,
 	originBatchPos uint64,
@@ -83,10 +97,11 @@ func NewStreamer(
 	if l2Client == nil {
 		return nil, fmt.Errorf("l2Client must be set: the origin batch hash is resolved from it")
 	}
-	// time.NewTicker panics on a non-positive interval, so reject it here rather than
-	// in the poll goroutine.
-	if pollInterval <= 0 {
-		return nil, fmt.Errorf("pollInterval must be positive, got %s", pollInterval)
+	if lightClient == nil {
+		return nil, fmt.Errorf("lightClient must be set: the fallback HotShot position is read from it")
+	}
+	if retryTime <= 0 {
+		return nil, fmt.Errorf("retryTime must be positive, got %s", retryTime)
 	}
 
 	originBatchHash, err := l2Client.HeaderHashByNumber(ctx, new(big.Int).SetUint64(originBatchPos))
@@ -109,9 +124,11 @@ func NewStreamer(
 		unmarshal:                 unmarshal,
 		pollerFunc:                pollerFunc,
 		logger:                    logger,
-		pollInterval:              pollInterval,
+		retryTime:                 retryTime,
+		finalityInterval:          defaultFinalityInterval,
 		store:                     newBatchStore(originBatchPos+1, originBatchHash, logger),
 		hotShotPos:                originHotShotPos,
+		fallbackHotShotPos:        originHotShotPos,
 		finalizedL1StateCache:     finalizedL1StateCache,
 		batcherAtL1FinalizedCache: batcherAtL1FinalizedCache,
 		rollupL1Client:            rollupL1Client,
@@ -120,8 +137,8 @@ func NewStreamer(
 	}, nil
 }
 
-// Start launches the background poll loop, returning ErrAlreadyStarted if it is
-// already running.
+// Start launches the two background loops - one tracking finality and one pulling from
+// Espresso it returns ErrAlreadyStarted if they are already running.
 func (s *Streamer) Start(ctx context.Context) error {
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
@@ -130,20 +147,29 @@ func (s *Streamer) Start(ctx context.Context) error {
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	done := make(chan struct{})
 	s.cancel = cancel
-	s.done = done
 
-	s.logger.Info("espresso streamer started", "hotShotPos", s.hotShotPos, "pollInterval", s.pollInterval)
+	// Initialize finality
+	primeCtx, cancelPrime := context.WithTimeout(ctx, pollRPCTimeout)
+	s.pollForFinality(primeCtx)
+	cancelPrime()
 
+	s.logger.Info("espresso streamer started",
+		"hotShotPos", s.hotShotPos, "retryTime", s.retryTime, "finalityInterval", s.finalityInterval)
+
+	s.wg.Add(2)
 	go func() {
-		defer close(done)
-		s.poll(ctx)
+		defer s.wg.Done()
+		s.pollFinality(ctx)
+	}()
+	go func() {
+		defer s.wg.Done()
+		s.pollHotShot(ctx)
 	}()
 	return nil
 }
 
-// Stop cancels the poll loop and blocks until it has returned.
+// Stop cancels both loops and blocks until they have returned.
 func (s *Streamer) Stop() {
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
@@ -152,8 +178,8 @@ func (s *Streamer) Stop() {
 	}
 
 	s.cancel()
-	<-s.done
-	s.cancel, s.done = nil, nil
+	s.wg.Wait()
+	s.cancel = nil
 
 	s.logger.Info("espresso streamer stopped")
 }
@@ -192,38 +218,82 @@ func (s *Streamer) AdvancePosition() {
 	s.store.advance()
 }
 
+// GetFallbackHotshotPos is a helper function that allows us
+// to retrieve the fallback hotshot position.
+func (s *Streamer) GetFallbackHotshotPos() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.fallbackHotShotPos
+}
+
 func (s *Streamer) UnmarshalBatch(b []byte, l1Finalized uint64) (*derivation.EspressoBatch, error) {
 	return s.unmarshal(b, l1Finalized)
 }
 
-// ResetToSafeBatch re-anchors the streamer to the safe L2 head
-func (s *Streamer) ResetToSafeBatch(syncStatus *eth.SyncStatus) {
-	if syncStatus == nil {
-		s.logger.Warn("ignoring reset with nil sync status")
+// SetBatchPosition re-anchors the streamer onto l2Head, so the next batch it serves is
+// that block's child. Whatever it was tracking is dropped.
+//
+// The caller picks which head to pass - the safe or the finalized L2 head from its sync
+// status - which is what decides how far derivation is wound back.
+func (s *Streamer) SetBatchPosition(l2Head eth.L2BlockRef) {
+	if l2Head == (eth.L2BlockRef{}) {
+		s.logger.Warn("ignoring batch position with empty L2 head", "tip", s.store.tip())
 		return
 	}
-	if syncStatus.SafeL2 == (eth.L2BlockRef{}) {
-		s.logger.Warn("ignoring reset with empty safe L2 head", "tip", s.store.tip())
-		return
-	}
-	s.logger.Info("resetting streamer position to safe l2 batch", "safeL2Nr", syncStatus.SafeL2.Number, "safeL2Hash", syncStatus.SafeL2.Hash.Hex())
-	s.store.resetToSafeBatch(syncStatus.SafeL2.Number+1, syncStatus.SafeL2.Hash)
+	s.logger.Info("setting streamer batch position", "l2Nr", l2Head.Number, "l2Hash", l2Head.Hash.Hex())
+	s.store.setBatchPosition(l2Head.Number+1, l2Head.Hash)
 }
 
-func (s *Streamer) poll(ctx context.Context) {
-	ticker := time.NewTicker(s.pollInterval)
+// pollFinality keeps the streamer's view of finality current, on an interval. It is
+// deliberately not hot: finality only advances at L1 block time, and each pass costs a
+// sync-status call plus a light client read. Running it apart from the HotShot loop
+// also keeps a slow fetch from delaying finality, and vice versa.
+func (s *Streamer) pollFinality(ctx context.Context) {
+	defer s.logger.Info("finality poll loop returning")
+
+	ticker := time.NewTicker(s.finalityInterval)
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
-			s.logger.Info("poll loop returning")
 			return
 		case <-ticker.C:
 		}
 
-		s.pollForFinality(ctx)
-		if err := s.fetchEspressoTransactions(ctx); err != nil && ctx.Err() == nil {
-			s.logger.Warn("failed to fetch espresso transactions", "err", err)
+		callCtx, cancel := context.WithTimeout(ctx, pollRPCTimeout)
+		s.pollForFinality(callCtx)
+		cancel()
+	}
+}
+
+// pollHotShot runs hot: it keeps pulling from HotShot as fast as the query service will
+// serve, so a backlog is consumed at the rate the endpoints allow rather than one batch
+// of blocks per tick. Only a failed fetch pauses it, for retryTime.
+func (s *Streamer) pollHotShot(ctx context.Context) {
+	defer s.logger.Info("hotshot poll loop returning")
+
+	for ctx.Err() == nil {
+		fetchCtx, cancelFetch := context.WithTimeout(ctx, pollRPCTimeout)
+		err := s.fetchEspressoTransactions(fetchCtx)
+		cancelFetch()
+
+		if err == nil {
+			continue
+		}
+		select {
+		case <-ctx.Done():
+			s.logger.Info("fetch interrupted by shutdown", "err", err)
+			return
+		default:
+		}
+		s.logger.Warn("failed to fetch espresso transactions", "err", err, "retryIn", s.retryTime)
+
+		// Back off, so a persistently failing endpoint is retried rather than hammered.
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(s.retryTime):
 		}
 	}
 }
@@ -256,6 +326,46 @@ func (s *Streamer) pollForFinality(ctx context.Context) {
 	s.mu.Unlock()
 
 	s.store.advanceOnFinalization(syncStatus.FinalizedL2.Number)
+
+	// Nothing is finalized yet, so there is no L1 origin to pin a HotShot height to.
+	if syncStatus.FinalizedL2 == (eth.L2BlockRef{}) {
+		return
+	}
+	s.confirmEspressoBlockHeight(ctx, syncStatus.FinalizedL2.L1Origin)
+}
+
+// confirmEspressoBlockHeight pins the HotShot height that is guaranteed not to hold
+// any batch with an L1 origin at or beyond finalizedL1Origin, by reading the light
+// client's finalized state as of that L1 block. Resuming from that height cannot skip
+// an unsafe batch, which is what makes it the fallback position.
+//
+// See https://eng-wiki.espressosys.com/mainch30.html#:Components:espresso%20streamer:initializing%20hotshot%20height
+//
+// A failure is not fatal: the streamer keeps running against the position it already
+// had, so an unreachable light client only makes the fallback staler.
+func (s *Streamer) confirmEspressoBlockHeight(ctx context.Context, finalizedL1Origin eth.BlockID) {
+	hotshotState, err := s.espressoLightClient.FinalizedState(&bind.CallOpts{
+		Context:     ctx,
+		BlockNumber: new(big.Int).SetUint64(finalizedL1Origin.Number),
+	})
+	if err != nil {
+		s.logger.Warn("failed to get finalized state from light client",
+			"l1Origin", finalizedL1Origin.Number, "err", err)
+		return
+	}
+
+	s.mu.Lock()
+	previous := s.fallbackHotShotPos
+	s.fallbackHotShotPos = hotshotState.BlockHeight
+	s.mu.Unlock()
+
+	// The light client reporting a lower height than before means the L1 view it was
+	// read against changed under us. The lower height is still safe to resume from, so
+	// take it, but it is worth knowing about.
+	if hotshotState.BlockHeight < previous {
+		s.logger.Warn("light client reported a lower HotShot height than the current fallback position",
+			"l1Origin", finalizedL1Origin.Number, "previous", previous, "reported", hotshotState.BlockHeight)
+	}
 }
 
 func (s *Streamer) fetchEspressoTransactions(ctx context.Context) error {

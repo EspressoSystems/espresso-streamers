@@ -2,6 +2,7 @@ package op
 
 import (
 	"context"
+	"errors"
 	"math"
 	"math/big"
 	"sync/atomic"
@@ -14,6 +15,7 @@ import (
 	"github.com/ethereum-optimism/optimism/op-service/crypto"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	opsigner "github.com/ethereum-optimism/optimism/op-service/signer"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	geth_types "github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -89,29 +91,34 @@ func TestNewStreamerValidation(t *testing.T) {
 	state := NewMockStreamerSource()
 	poller := func(context.Context) (*eth.SyncStatus, error) { return state.SyncStatus(), nil }
 
-	newWith := func(authAddr common.Address, l2 L2Client, p func(context.Context) (*eth.SyncStatus, error), interval time.Duration) error {
+	newWith := func(authAddr common.Address, l2 L2Client, lc LightClientCallerInterface,
+		p func(context.Context) (*eth.SyncStatus, error), interval time.Duration) error {
 		_, err := NewStreamer(
-			context.Background(), state, state, l2, state, authAddr, 1,
+			context.Background(), state, state, l2, lc, authAddr, 1,
 			derivation.CreateEspressoBatchUnmarshaler(), p, interval, new(NoOpLogger), 0, 1,
 		)
 		return err
 	}
 
 	t.Run("valid", func(t *testing.T) {
-		require.NoError(t, newWith(batchAuthenticatorAddr, state, poller, time.Second))
+		require.NoError(t, newWith(batchAuthenticatorAddr, state, state, poller, time.Second))
 	})
 	t.Run("zero BatchAuthenticator address", func(t *testing.T) {
-		require.ErrorContains(t, newWith(common.Address{}, state, poller, time.Second), "BatchAuthenticator address must be set")
+		require.ErrorContains(t, newWith(common.Address{}, state, state, poller, time.Second), "BatchAuthenticator address must be set")
 	})
 	t.Run("nil pollerFunc", func(t *testing.T) {
-		require.ErrorContains(t, newWith(batchAuthenticatorAddr, state, nil, time.Second), "pollerFunc must be set")
+		require.ErrorContains(t, newWith(batchAuthenticatorAddr, state, state, nil, time.Second), "pollerFunc must be set")
 	})
 	t.Run("nil l2Client", func(t *testing.T) {
-		require.ErrorContains(t, newWith(batchAuthenticatorAddr, nil, poller, time.Second), "l2Client must be set")
+		require.ErrorContains(t, newWith(batchAuthenticatorAddr, nil, state, poller, time.Second), "l2Client must be set")
 	})
-	t.Run("non-positive pollInterval", func(t *testing.T) {
-		// time.NewTicker would panic inside the poll goroutine, so this has to fail here.
-		require.ErrorContains(t, newWith(batchAuthenticatorAddr, state, poller, 0), "pollInterval must be positive")
+	t.Run("nil lightClient", func(t *testing.T) {
+		// It is read every poll iteration, so a nil would panic in the poll goroutine.
+		require.ErrorContains(t, newWith(batchAuthenticatorAddr, state, nil, poller, time.Second), "lightClient must be set")
+	})
+	t.Run("non-positive retryTime", func(t *testing.T) {
+		// Otherwise a failing endpoint would be retried with no delay at all.
+		require.ErrorContains(t, newWith(batchAuthenticatorAddr, state, state, poller, 0), "retryTime must be positive")
 	})
 }
 
@@ -483,28 +490,41 @@ func TestStorePeekFailsClosedOnUnsetTip(t *testing.T) {
 	require.Nil(t, streamer.Peek(context.Background()))
 }
 
-func TestStoreResetRepositionsAndRetargetsTip(t *testing.T) {
+// TestSetBatchPositionRepositionsAndRetargetsTip covers both heads a caller can anchor
+// to: the streamer takes whichever L2 block it is handed, rather than reaching into a
+// sync status for one of them itself.
+func TestSetBatchPositionRepositionsAndRetargetsTip(t *testing.T) {
 	const origin = uint64(1)
 	state, streamer := newTestStreamer(t, 42, common.Address{}, origin)
 
 	state.AdvanceL2ByNBlocks(5)
+	state.FinalizedL2 = createL2BlockRef(2, state.FinalizedL1)
 	syncStatus := state.SyncStatus()
-	streamer.ResetToSafeBatch(syncStatus)
 
-	require.Equal(t, syncStatus.SafeL2.Hash, streamer.store.tip())
-	require.Equal(t, syncStatus.SafeL2.Number+1, streamer.store.nextBatchPos)
+	for _, tc := range []struct {
+		name string
+		head eth.L2BlockRef
+	}{
+		{"safe L2 head", syncStatus.SafeL2},
+		{"finalized L2 head", syncStatus.FinalizedL2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			streamer.SetBatchPosition(tc.head)
+
+			require.Equal(t, tc.head.Hash, streamer.store.tip())
+			require.Equal(t, tc.head.Number+1, streamer.store.nextBatchPos)
+		})
+	}
 }
 
-func TestResetIgnoresEmptySyncStatus(t *testing.T) {
+func TestSetBatchPositionIgnoresEmptyHead(t *testing.T) {
 	const origin = uint64(3)
 	_, streamer := newTestStreamer(t, 42, common.Address{}, origin)
 	before := streamer.store.tip()
 
-	streamer.ResetToSafeBatch(nil)
-	require.Equal(t, before, streamer.store.tip(), "a nil sync status must not move the tip")
-
-	streamer.ResetToSafeBatch(&eth.SyncStatus{})
-	require.Equal(t, before, streamer.store.tip(), "an empty safe head must not zero the tip")
+	streamer.SetBatchPosition(eth.L2BlockRef{})
+	require.Equal(t, before, streamer.store.tip(), "an empty L2 head must not zero the tip")
+	require.Equal(t, origin+1, streamer.store.nextBatchPos, "nor move the position to 1")
 }
 
 func TestStorePrunesFinalizedAndLeavesNoStale(t *testing.T) {
@@ -674,13 +694,96 @@ func TestPollForFinalityIgnoresRegressedFinalizedL1(t *testing.T) {
 	require.Equal(t, advanced, streamer.finalizedL1)
 }
 
+// TestFallbackHotshotPosFromLightClient covers the fallback position: the poll loop
+// reads the light client at the finalized L2 block's L1 origin, and that height is what
+// GetFallbackHotshotPos reports.
+func TestFallbackHotshotPosFromLightClient(t *testing.T) {
+	ctx := context.Background()
+	const originHotShotPos = uint64(0)
+
+	state, streamer := newTestStreamer(t, 42, common.Address{}, 1)
+	require.Equal(t, originHotShotPos, streamer.GetFallbackHotshotPos(),
+		"before any poll the fallback is the streamer's HotShot origin")
+
+	// Finality at L2 block 20, whose L1 origin is block 7; the light client reports
+	// HotShot height 500 as of that L1 block.
+	state.FinalizedL2 = createL2BlockRef(20, createL1BlockRef(7))
+	var queriedAt uint64
+	state.FinalizedStateFunc = func(opts *bind.CallOpts) (FinalizedState, error) {
+		queriedAt = opts.BlockNumber.Uint64()
+		return FinalizedState{BlockHeight: 500}, nil
+	}
+
+	streamer.pollForFinality(ctx)
+
+	require.Equal(t, uint64(7), queriedAt, "the light client is queried at the finalized L2 block's L1 origin")
+	require.Equal(t, uint64(500), streamer.GetFallbackHotshotPos())
+}
+
+// TestFallbackHotshotPosStartsAtStreamerOrigin covers the pre-poll value: until the
+// light client has been read, the position to fall back to is where the streamer was
+// told to start.
+func TestFallbackHotshotPosStartsAtStreamerOrigin(t *testing.T) {
+	const originHotShotPos = uint64(100)
+
+	state := NewMockStreamerSource()
+	streamer, err := NewStreamer(
+		context.Background(), state, state, state, state, batchAuthenticatorAddr, 42,
+		derivation.CreateEspressoBatchUnmarshaler(),
+		func(context.Context) (*eth.SyncStatus, error) { return state.SyncStatus(), nil },
+		time.Second, new(NoOpLogger), originHotShotPos, 1,
+	)
+	require.NoError(t, err)
+
+	require.Equal(t, originHotShotPos, streamer.GetFallbackHotshotPos())
+}
+
+func TestFallbackHotshotPosKeptWhenLightClientFails(t *testing.T) {
+	ctx := context.Background()
+	state, streamer := newTestStreamer(t, 42, common.Address{}, 1)
+
+	state.FinalizedL2 = createL2BlockRef(20, createL1BlockRef(7))
+	state.FinalizedStateFunc = func(opts *bind.CallOpts) (FinalizedState, error) {
+		return FinalizedState{BlockHeight: 500}, nil
+	}
+	streamer.pollForFinality(ctx)
+	require.Equal(t, uint64(500), streamer.GetFallbackHotshotPos())
+
+	// An unreachable light client is not fatal: the streamer keeps the position it had.
+	state.FinalizedStateFunc = func(opts *bind.CallOpts) (FinalizedState, error) {
+		return FinalizedState{}, errors.New("light client unreachable")
+	}
+	streamer.pollForFinality(ctx)
+	require.Equal(t, uint64(500), streamer.GetFallbackHotshotPos())
+}
+
+// TestFallbackHotshotPosSkippedBeforeAnyFinalizedL2 covers the pre-finality window: with
+// nothing finalized there is no L1 origin to pin a HotShot height to, so the light client
+// is left alone.
+func TestFallbackHotshotPosSkippedBeforeAnyFinalizedL2(t *testing.T) {
+	ctx := context.Background()
+	state, streamer := newTestStreamer(t, 42, common.Address{}, 1)
+
+	state.FinalizedL2 = eth.L2BlockRef{}
+	called := false
+	state.FinalizedStateFunc = func(opts *bind.CallOpts) (FinalizedState, error) {
+		called = true
+		return FinalizedState{BlockHeight: 500}, nil
+	}
+
+	streamer.pollForFinality(ctx)
+	require.False(t, called, "the light client must not be queried without a finalized L2 block")
+	require.Zero(t, streamer.GetFallbackHotshotPos())
+}
+
 // -----------------------------------------------------------------------------
 // Lifecycle
 // -----------------------------------------------------------------------------
 
-// newPollCountingStreamer returns a streamer whose loop ticks fast, plus a counter of
-// poll iterations observed through pollerFunc.
-func newPollCountingStreamer(t *testing.T) (*Streamer, *atomic.Int64) {
+// newPollCountingStreamer returns a streamer plus a counter of finality polls observed
+// through pollerFunc. The finality interval is shortened so ticks accrue quickly; the
+// HotShot loop runs hot on its own and is counted by state.LatestHeightCalls.
+func newPollCountingStreamer(t *testing.T) (*MockStreamerSource, *Streamer, *atomic.Int64) {
 	t.Helper()
 
 	state := NewMockStreamerSource()
@@ -692,13 +795,14 @@ func newPollCountingStreamer(t *testing.T) (*Streamer, *atomic.Int64) {
 
 	streamer, err := NewStreamer(
 		context.Background(), state, state, state, state, batchAuthenticatorAddr, 1,
-		derivation.CreateEspressoBatchUnmarshaler(), poller, time.Second, new(NoOpLogger), 0, 1,
+		derivation.CreateEspressoBatchUnmarshaler(), poller, time.Millisecond, new(NoOpLogger), 0, 1,
 	)
 	require.NoError(t, err)
 
-	// Set before Start: poll reads this without synchronization.
-	streamer.pollInterval = time.Millisecond
-	return streamer, &polls
+	// Set before Start, so the loop goroutine reads it without a race.
+	streamer.finalityInterval = time.Millisecond
+
+	return state, streamer, &polls
 }
 
 func waitForPolls(t *testing.T, polls *atomic.Int64, want int64) {
@@ -708,20 +812,48 @@ func waitForPolls(t *testing.T, polls *atomic.Int64, want int64) {
 }
 
 func TestStreamerStartStop(t *testing.T) {
-	streamer, polls := newPollCountingStreamer(t)
+	state, streamer, polls := newPollCountingStreamer(t)
 
 	require.NoError(t, streamer.Start(context.Background()))
 	waitForPolls(t, polls, 3)
+	require.Eventually(t, func() bool { return state.LatestHeightCalls.Load() > 0 },
+		10*time.Second, time.Millisecond, "the hotshot loop never ran")
 	streamer.Stop()
 
-	// Stop must join the loop, not merely signal it, so the count cannot move after.
-	settled := polls.Load()
+	// Stop must join both loops, not merely signal them, so neither count can move after.
+	settledPolls, settledFetches := polls.Load(), state.LatestHeightCalls.Load()
 	time.Sleep(50 * time.Millisecond)
-	require.Equal(t, settled, polls.Load(), "poll loop kept running after Stop returned")
+	require.Equal(t, settledPolls, polls.Load(), "finality loop kept running after Stop returned")
+	require.Equal(t, settledFetches, state.LatestHeightCalls.Load(), "hotshot loop kept running after Stop returned")
+}
+
+// TestStreamerPrimesFinalityBeforeStart covers the priming poll: Start establishes a
+// finality view up front, so the HotShot loop's first fetch is not checked against a
+// zero finalized L1.
+func TestStreamerPrimesFinalityBeforeStart(t *testing.T) {
+	state := NewMockStreamerSource()
+	state.AdvanceFinalizedL1ByNBlocks(10)
+
+	streamer, err := NewStreamer(
+		context.Background(), state, state, state, state, batchAuthenticatorAddr, 1,
+		derivation.CreateEspressoBatchUnmarshaler(),
+		func(context.Context) (*eth.SyncStatus, error) { return state.SyncStatus(), nil },
+		time.Millisecond, new(NoOpLogger), 0, 1,
+	)
+	require.NoError(t, err)
+	require.Zero(t, streamer.finalizedL1.Number, "finality is unknown until a poll happens")
+
+	// Long enough that a ticker-driven first poll could not have fired yet.
+	streamer.finalityInterval = time.Hour
+	require.NoError(t, streamer.Start(context.Background()))
+	t.Cleanup(streamer.Stop)
+
+	require.Equal(t, uint64(11), streamer.finalizedL1.Number,
+		"Start must poll finality once before returning")
 }
 
 func TestStreamerDoubleStartRejected(t *testing.T) {
-	streamer, _ := newPollCountingStreamer(t)
+	_, streamer, _ := newPollCountingStreamer(t)
 	t.Cleanup(streamer.Stop)
 
 	require.NoError(t, streamer.Start(context.Background()))
@@ -729,7 +861,7 @@ func TestStreamerDoubleStartRejected(t *testing.T) {
 }
 
 func TestStreamerStopIsIdempotent(t *testing.T) {
-	streamer, polls := newPollCountingStreamer(t)
+	_, streamer, polls := newPollCountingStreamer(t)
 
 	// Before any Start: must be a no-op, not a panic or a block on a nil channel.
 	streamer.Stop()
@@ -741,7 +873,7 @@ func TestStreamerStopIsIdempotent(t *testing.T) {
 }
 
 func TestStreamerRestartsAfterStop(t *testing.T) {
-	streamer, polls := newPollCountingStreamer(t)
+	_, streamer, polls := newPollCountingStreamer(t)
 
 	require.NoError(t, streamer.Start(context.Background()))
 	waitForPolls(t, polls, 1)
@@ -754,7 +886,7 @@ func TestStreamerRestartsAfterStop(t *testing.T) {
 }
 
 func TestStreamerStopsOnContextCancel(t *testing.T) {
-	streamer, polls := newPollCountingStreamer(t)
+	_, streamer, polls := newPollCountingStreamer(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	require.NoError(t, streamer.Start(ctx))

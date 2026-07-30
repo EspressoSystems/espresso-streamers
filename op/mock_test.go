@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
+	"sync/atomic"
 
 	espressoClient "github.com/EspressoSystems/espresso-network/sdks/go/client"
 	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
@@ -65,6 +66,7 @@ type MockStreamerSource struct {
 
 	FinalizedL1 eth.L1BlockRef
 	SafeL2      eth.L2BlockRef
+	FinalizedL2 eth.L2BlockRef
 
 	EspTransactionData     map[EspBlockAndNamespace]espressoClient.TransactionsInBlock
 	LatestEspHeight        uint64
@@ -79,6 +81,12 @@ type MockStreamerSource struct {
 	// resolves to TeeBatcherAddr (the common case). Used to simulate batcher
 	// rotations keyed by L1 block.
 	EspressoBatcherByBlock func(l1Block uint64) common.Address
+	// FinalizedStateFunc, when set, replaces the light client's FinalizedState reply.
+	FinalizedStateFunc func(opts *bind.CallOpts) (FinalizedState, error)
+
+	// LatestHeightCalls counts FetchLatestBlockHeight calls, which is once per HotShot
+	// loop iteration. Atomic because that loop runs on its own goroutine.
+	LatestHeightCalls atomic.Int64
 	// HotShotL1Finalized overrides the finalized L1 block reported in the HotShot
 	// header for a given HotShot block height in FetchHeadersByRange. Set an entry
 	// to model HotShot's view of L1 finality diverging from our node's.
@@ -156,6 +164,7 @@ func NewMockStreamerSource() *MockStreamerSource {
 	return &MockStreamerSource{
 		FinalizedL1:            finalizedL1,
 		SafeL2:                 createL2BlockRef(0, finalizedL1),
+		FinalizedL2:            createL2BlockRef(0, finalizedL1),
 		EspTransactionData:     make(map[EspBlockAndNamespace]espressoClient.TransactionsInBlock),
 		finalizedHeightHistory: make(map[uint64]uint64),
 		l1FinalizedAtHeight:    make(map[uint64]uint64),
@@ -203,6 +212,7 @@ func (m *MockStreamerSource) SyncStatus() *eth.SyncStatus {
 	return &eth.SyncStatus{
 		FinalizedL1: m.FinalizedL1,
 		SafeL2:      m.SafeL2,
+		FinalizedL2: m.FinalizedL2,
 	}
 }
 
@@ -276,6 +286,7 @@ func (m *MockStreamerSource) CallContract(ctx context.Context, call ethereum.Cal
 var _ EspressoClient = (*MockStreamerSource)(nil)
 
 func (m *MockStreamerSource) FetchLatestBlockHeight(ctx context.Context) (uint64, error) {
+	m.LatestHeightCalls.Add(1)
 	if m.LatestEspHeight <= math.MaxUint64-2 {
 		return m.LatestEspHeight + 2, nil
 	}
@@ -389,6 +400,11 @@ var _ LightClientCallerInterface = (*MockStreamerSource)(nil)
 
 // LightClientCallerInterface implementation
 func (m *MockStreamerSource) FinalizedState(opts *bind.CallOpts) (FinalizedState, error) {
+	// Let a test drive the light client directly, to model a height per L1 block or an
+	// unreachable contract.
+	if m.FinalizedStateFunc != nil {
+		return m.FinalizedStateFunc(opts)
+	}
 	height, ok := m.finalizedHeightHistory[opts.BlockNumber.Uint64()]
 	if !ok {
 		height = m.LatestEspHeight
