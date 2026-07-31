@@ -124,12 +124,18 @@ func (b *BufferedEspressoStreamer[B]) RefreshSafeL1Origin(safeL1Origin eth.Block
 	b.currentSafeL1Origin = safeL1Origin
 }
 
-// Refresh implements EspressoStreamerIFace
-func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockRef, safeBatchNumber uint64, safeL1Origin eth.BlockID) error {
-	b.handleL2PositionUpdate(safeBatchNumber)
-	b.RefreshSafeL1Origin(safeL1Origin)
+// Refresh implements EspressoStreamerIFace. It delegates to the wrapped streamer and applies
+// the buffer's bookkeeping to the status it returns, so both layers act on one snapshot.
+func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context) (*eth.SyncStatus, error) {
+	syncStatus, err := b.streamer.Refresh(ctx)
+	if err != nil {
+		return nil, err
+	}
 
-	return b.streamer.Refresh(ctx, finalizedL1, safeBatchNumber, safeL1Origin)
+	b.handleL2PositionUpdate(syncStatus.SafeL2.Number)
+	b.RefreshSafeL1Origin(syncStatus.FinalizedL2.L1Origin)
+
+	return syncStatus, nil
 }
 
 // Reset rewinds the start of the cached batch window.

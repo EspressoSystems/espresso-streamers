@@ -44,7 +44,7 @@ func TestNewEspressoStreamer(t *testing.T) {
 		1,
 		mock,
 		mock,
-		mock, mock, new(NoOpLogger), derivation.CreateEspressoBatchUnmarshaler(),
+		mock, mock, mock, new(NoOpLogger), derivation.CreateEspressoBatchUnmarshaler(),
 		0,
 		1,
 		batchAuthAddr,
@@ -67,7 +67,7 @@ func TestResetAfterNewDoesNotSkipBatch(t *testing.T) {
 		1,
 		mock,
 		mock,
-		mock, mock, new(NoOpLogger), derivation.CreateEspressoBatchUnmarshaler(),
+		mock, mock, mock, new(NoOpLogger), derivation.CreateEspressoBatchUnmarshaler(),
 		0,
 		originBatchPos,
 		batchAuthAddr,
@@ -117,6 +117,9 @@ type MockStreamerSource struct {
 
 	FinalizedL1 eth.L1BlockRef
 	SafeL2      eth.L2BlockRef
+	// FinalizedL2 mirrors SafeL2 by default; Refresh reads the anchor's L1 origin from it.
+	// Set it alone to model the two heads diverging.
+	FinalizedL2 eth.L2BlockRef
 
 	EspTransactionData     map[EspBlockAndNamespace]espressoClient.TransactionsInBlock
 	LatestEspHeight        uint64
@@ -125,6 +128,11 @@ type MockStreamerSource struct {
 	// TeeBatcherAddr is the address returned by the mock BatchAuthenticator contract
 	// for teeBatcher() calls. Can be changed per-test to simulate TEE batcher rotation.
 	TeeBatcherAddr common.Address
+
+	// SyncStatusErr, when set, makes FetchSyncStatus fail.
+	SyncStatusErr error
+	// LightClientErr, when set, makes FinalizedState fail.
+	LightClientErr error
 
 	// EspressoBatcherByBlock, when set, resolves the authorized Espresso batcher
 	// for a given L1 block in espressoBatcherAtBlock calls. When nil, every block
@@ -206,6 +214,7 @@ func NewMockStreamerSource() *MockStreamerSource {
 	return &MockStreamerSource{
 		FinalizedL1:            finalizedL1,
 		SafeL2:                 createL2BlockRef(0, finalizedL1),
+		FinalizedL2:            createL2BlockRef(0, finalizedL1),
 		EspTransactionData:     make(map[EspBlockAndNamespace]espressoClient.TransactionsInBlock),
 		finalizedHeightHistory: make(map[uint64]uint64),
 		l1FinalizedAtHeight:    make(map[uint64]uint64),
@@ -229,11 +238,13 @@ func (m *MockStreamerSource) AdvanceFinalizedL1() {
 // AdvanceL2ByNBlocks advances the SafeL2 block reference by n blocks.
 func (m *MockStreamerSource) AdvanceL2ByNBlocks(n uint) {
 	m.SafeL2 = createL2BlockRef(m.SafeL2.Number+uint64(n), m.FinalizedL1)
+	m.FinalizedL2 = m.SafeL2
 }
 
 // AdvanceSafeL2 advances the SafeL2 block reference by one block.
 func (m *MockStreamerSource) AdvanceSafeL2() {
 	m.SafeL2 = createL2BlockRef(m.SafeL2.Number+1, m.FinalizedL1)
+	m.FinalizedL2 = m.SafeL2
 }
 
 // AdvanceEspressoHeightByNBlocks advances the LatestEspHeight by n blocks.
@@ -253,7 +264,18 @@ func (m *MockStreamerSource) SyncStatus() *eth.SyncStatus {
 	return &eth.SyncStatus{
 		FinalizedL1: m.FinalizedL1,
 		SafeL2:      m.SafeL2,
+		FinalizedL2: m.FinalizedL2,
 	}
+}
+
+var _ SyncStatusProvider = (*MockStreamerSource)(nil)
+
+// FetchSyncStatus implements SyncStatusProvider.
+func (m *MockStreamerSource) FetchSyncStatus(ctx context.Context) (*eth.SyncStatus, error) {
+	if m.SyncStatusErr != nil {
+		return nil, m.SyncStatusErr
+	}
+	return m.SyncStatus(), nil
 }
 
 func (m *MockStreamerSource) AddEspressoTransactionData(height, namespace uint64, txData espressoClient.TransactionsInBlock) {
@@ -439,6 +461,10 @@ var _ LightClientCallerInterface = (*MockStreamerSource)(nil)
 
 // LightClientCallerInterface implementation
 func (m *MockStreamerSource) FinalizedState(opts *bind.CallOpts) (FinalizedState, error) {
+	if m.LightClientErr != nil {
+		return FinalizedState{}, m.LightClientErr
+	}
+
 	height, ok := m.finalizedHeightHistory[opts.BlockNumber.Uint64()]
 	if !ok {
 		height = m.LatestEspHeight
@@ -547,6 +573,7 @@ func setupStreamerTestingWithPerf(namespace uint64, batcherAddress common.Addres
 		state,
 		state,
 		state,
+		state,
 		logger,
 		derivation.CreateEspressoBatchUnmarshaler(),
 		0,
@@ -616,11 +643,10 @@ func TestStreamerSmoke(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	state, streamer := setupStreamerTesting(42, common.Address{})
+	_, streamer := setupStreamerTesting(42, common.Address{})
 
 	// update the state of our streamer
-	syncStatus := state.SyncStatus()
-	err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+	_, err := streamer.Refresh(ctx)
 
 	if have, want := err, error(nil); have != want {
 		t.Fatalf("failed to refresh streamer state encountered error:\nhave:\n\t\"%v\"\nwant:\n\t\"%v\"\n", have, want)
@@ -657,8 +683,7 @@ func TestEspressoStreamerSimpleIncremental(t *testing.T) {
 
 	for i := 0; i < N; i++ {
 		// update the state of our streamer
-		syncStatus := state.SyncStatus()
-		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		_, err := streamer.Refresh(ctx)
 
 		if have, want := err, error(nil); have != want {
 			t.Fatalf("failed to refresh streamer state encountered error:\nhave:\n\t\"%v\"\nwant:\n\t\"%v\"\n", have, want)
@@ -719,8 +744,7 @@ func TestEspressoStreamerIncrementalDelayedConsumption(t *testing.T) {
 	var batches []*derive.SingularBatch
 
 	// update the state of our streamer
-	syncStatus := state.SyncStatus()
-	err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+	_, err := streamer.Refresh(ctx)
 
 	for i := 0; i < N; i++ {
 		batch, _, _, espTxnInBlock := state.CreateEspressoTxnData(
@@ -787,8 +811,7 @@ func TestStreamerEspressoOutOfOrder(t *testing.T) {
 	rng := rand.New(rand.NewSource(0))
 
 	// update the state of our streamer
-	syncStatus := state.SyncStatus()
-	err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+	_, err := streamer.Refresh(ctx)
 
 	if have, want := err, error(nil); have != want {
 		t.Fatalf("failed to refresh streamer state encountered error:\nhave:\n\t\"%v\"\nwant:\n\t\"%v\"\n", have, want)
@@ -872,8 +895,7 @@ func TestEspressoStreamerDuplicationHandling(t *testing.T) {
 	rng := rand.New(rand.NewSource(0))
 
 	// update the state of our streamer
-	syncStatus := state.SyncStatus()
-	err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+	_, err := streamer.Refresh(ctx)
 
 	if have, want := err, error(nil); have != want {
 		t.Fatalf("failed to refresh streamer state encountered error:\nhave:\n\t\"%v\"\nwant:\n\t\"%v\"\n", have, want)
@@ -893,8 +915,7 @@ func TestEspressoStreamerDuplicationHandling(t *testing.T) {
 		// duplicate the batch
 		for j := 0; j < 2; j++ {
 			// update the state of our streamer
-			syncStatus := state.SyncStatus()
-			err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+			_, err := streamer.Refresh(ctx)
 
 			require.NoError(t, err)
 
@@ -984,8 +1005,7 @@ func TestStreamerInvalidHeadBatchDiscarded(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 
 	// Refresh state - after this, BatchPos becomes 1
-	syncStatus := state.SyncStatus()
-	err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+	_, err := streamer.Refresh(ctx)
 	require.NoError(t, err)
 
 	// Create batch 1 with INVALID L1 origin hash (using a hash that won't match)
@@ -1033,8 +1053,7 @@ func TestStreamerMultipleBatchesSameNumber(t *testing.T) {
 		rng := rand.New(rand.NewSource(3))
 
 		// Refresh state - after this, BatchPos becomes 1
-		syncStatus := state.SyncStatus()
-		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		_, err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		invalidHash := common.HexToHash("0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
@@ -1085,8 +1104,7 @@ func TestStreamerMultipleBatchesSameNumber(t *testing.T) {
 		rng := rand.New(rand.NewSource(4))
 
 		// Refresh state - after this, BatchPos becomes 1
-		syncStatus := state.SyncStatus()
-		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		_, err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		invalidHash := common.HexToHash("0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
@@ -1120,8 +1138,7 @@ func TestStreamerMultipleBatchesSameNumber(t *testing.T) {
 		rng := rand.New(rand.NewSource(5))
 
 		// Refresh state - after this, BatchPos becomes 1
-		syncStatus := state.SyncStatus()
-		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		_, err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// Create 2 valid batches for number 1 with different hashes
@@ -1186,8 +1203,7 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 
 		rng := rand.New(rand.NewSource(99))
 
-		syncStatus := state.SyncStatus()
-		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		_, err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// Place enough batches to fill the buffer and overflow by one full
@@ -1248,8 +1264,7 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 
 		rng := rand.New(rand.NewSource(7))
 
-		syncStatus := state.SyncStatus()
-		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		_, err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// Fill buffer with future batches (2, 3, 4, ...)
@@ -1291,8 +1306,7 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 
 		rng := rand.New(rand.NewSource(42))
 
-		syncStatus := state.SyncStatus()
-		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		_, err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// Fill the buffer to exactly BatchBufferCapacity. LatestEspHeight ends at
@@ -1356,15 +1370,12 @@ func TestStreamerBatchOrderingDeterminism(t *testing.T) {
 		state, streamer := setupStreamerTesting(namespace, signerAddress)
 		rng := rand.New(rand.NewSource(8))
 
-		// Advance L1 to have two finalized blocks at heights 1 and 2
-		// FinalizedL1 starts at 1
-		state.AdvanceFinalizedL1() // Now at 2
-
-		// Refresh state with only height 1 finalized (we'll pretend height 2 is not finalized yet)
-		// We need to control what the streamer sees as finalized
+		// FinalizedL1 starts at 1, and stays there for now: height 2 being unfinalized is
+		// what leaves batch a1 undecided below. Refresh reads finality from the sync
+		// status, so the mock's own position is what controls it.
 		// After this refresh, BatchPos becomes 1
 		l1Height1 := createL1BlockRef(1)
-		err := streamer.Refresh(ctx, l1Height1, state.SafeL2.Number, state.SafeL2.L1Origin)
+		_, err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// Insert batch a1 (number 1, L1 origin at height 2 - NOT finalized yet)
@@ -1392,7 +1403,8 @@ func TestStreamerBatchOrderingDeterminism(t *testing.T) {
 		require.False(t, streamer.HasNext(ctx), "should wait for first-inserted batch to become decided")
 
 		// Now advance L1 finalized to height 2
-		err = streamer.Refresh(ctx, l1Height2, state.SafeL2.Number, state.SafeL2.L1Origin)
+		state.AdvanceFinalizedL1()
+		_, err = streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// HasNext should now return true
@@ -1416,8 +1428,7 @@ func TestStreamerBatchOrderingDeterminism(t *testing.T) {
 		rng := rand.New(rand.NewSource(9))
 
 		// Refresh state - after this, BatchPos becomes 1
-		syncStatus := state.SyncStatus()
-		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		_, err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// First Update: insert batch a1 (number 1)
@@ -1459,6 +1470,65 @@ func TestStreamerBatchOrderingDeterminism(t *testing.T) {
 // This covers the scenario where another batcher (e.g. a non-tee batcher) has
 // advanced the safe batch number beyond our streamer's current position, so the
 // streamer must jump ahead to safe+1.
+// TestRefreshFailsWithoutSyncStatus: a provider that cannot answer must leave every
+// position alone rather than have Refresh act on a zero status.
+// TestRefreshKeepsFallbackAnchorCoherentWhenLightClientFails covers how the streamer used
+// to get stuck: the safe batch number regresses while the light client is unreachable, so
+// the anchor's batch half rolls back and its HotShot half does not. Reset then puts
+// hotShotPos past the block carrying nextBatchPos, which a forward-only scan never reaches.
+func TestRefreshKeepsFallbackAnchorCoherentWhenLightClientFails(t *testing.T) {
+	ctx := context.Background()
+	state, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+
+	// Get the anchor to a healthy, advanced pair first.
+	state.AdvanceEspressoHeightByNBlocks(500)
+	state.AdvanceL2ByNBlocks(50)
+	_, err := streamer.Refresh(ctx)
+	require.NoError(t, err)
+
+	advancedHotShot := streamer.fallbackHotShotPos
+	advancedBatch := streamer.fallbackBatchPos
+	require.NotZero(t, advancedHotShot, "expected the anchor to have advanced")
+
+	// Now the safe head regresses while the light client cannot be reached, so there is no
+	// coherent HotShot height to pair the lower batch position with.
+	state.SyncStatusErr = nil
+	state.LightClientErr = errors.New("light client unreachable")
+	state.SafeL2 = createL2BlockRef(advancedBatch-10, state.FinalizedL1)
+	state.FinalizedL2 = state.SafeL2
+
+	_, err = streamer.Refresh(ctx)
+	require.NoError(t, err, "a light client outage is not fatal to Refresh")
+
+	require.Equal(t, advancedBatch, streamer.fallbackBatchPos,
+		"the batch half must not roll back without a HotShot height to pair it with")
+	require.Equal(t, advancedHotShot, streamer.fallbackHotShotPos,
+		"the HotShot half must not move either")
+
+	// The invariant that matters: a reset from this anchor must land the cursor at or
+	// before the HotShot block that carries nextBatchPos, never past it.
+	streamer.Reset()
+	require.Equal(t, streamer.fallbackHotShotPos, streamer.hotShotPos)
+	require.Equal(t, streamer.fallbackBatchPos+1, streamer.nextBatchPos)
+}
+
+func TestRefreshFailsWithoutSyncStatus(t *testing.T) {
+	state, streamer := setupStreamerTesting(42, batchAuthenticatorAddr)
+
+	batchPos, fallbackBatch := streamer.nextBatchPos, streamer.fallbackBatchPos
+	hotShotPos, fallbackHotShot := streamer.hotShotPos, streamer.fallbackHotShotPos
+
+	state.SyncStatusErr = errors.New("op-node unreachable")
+	status, err := streamer.Refresh(context.Background())
+
+	require.ErrorContains(t, err, "failed to fetch sync status")
+	require.Nil(t, status)
+	require.Equal(t, batchPos, streamer.nextBatchPos, "positions must not move on a failed refresh")
+	require.Equal(t, fallbackBatch, streamer.fallbackBatchPos)
+	require.Equal(t, hotShotPos, streamer.hotShotPos)
+	require.Equal(t, fallbackHotShot, streamer.fallbackHotShotPos)
+}
+
 func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
 	namespace := uint64(42)
 
@@ -1473,7 +1543,8 @@ func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
 		// safeBatchNumber(10) != fallbackBatchPos(1) → no early return.
 		// After fallbackBatchPos is updated to 10, BatchPos(2) <= 10 → reset.
 		safeBatchNumber := uint64(10)
-		err := streamer.Refresh(ctx, state.FinalizedL1, safeBatchNumber, state.SafeL2.L1Origin)
+		state.SafeL2 = createL2BlockRef(safeBatchNumber, state.FinalizedL1)
+		_, err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// After reset: BatchPos = fallbackBatchPos + 1 = 11
@@ -1493,7 +1564,8 @@ func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
 		// safeBatchNumber(2) != fallbackBatchPos(1) → no early return.
 		// After fallbackBatchPos is updated to 2, BatchPos(2) <= 2 → reset.
 		safeBatchNumber := uint64(2)
-		err := streamer.Refresh(ctx, state.FinalizedL1, safeBatchNumber, state.SafeL2.L1Origin)
+		state.SafeL2 = createL2BlockRef(safeBatchNumber, state.FinalizedL1)
+		_, err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// After reset: BatchPos = fallbackBatchPos + 1 = 3
@@ -1512,7 +1584,8 @@ func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
 		streamer.nextBatchPos = 7
 
 		safeBatchNumber := uint64(5)
-		err := streamer.Refresh(ctx, state.FinalizedL1, safeBatchNumber, state.SafeL2.L1Origin)
+		state.SafeL2 = createL2BlockRef(safeBatchNumber, state.FinalizedL1)
+		_, err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// No reset should happen
@@ -1541,8 +1614,7 @@ func TestPeek(t *testing.T) {
 		state, streamer := setupStreamerTesting(namespace, signerAddress)
 		rng := rand.New(rand.NewSource(10))
 
-		syncStatus := state.SyncStatus()
-		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		_, err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		l2Height := 1
@@ -1569,10 +1641,9 @@ func TestPeek(t *testing.T) {
 	t.Run("returns nil when no batches available", func(t *testing.T) {
 		ctx := context.Background()
 
-		state, streamer := setupStreamerTesting(namespace, signerAddress)
+		_, streamer := setupStreamerTesting(namespace, signerAddress)
 
-		syncStatus := state.SyncStatus()
-		err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+		_, err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		err = streamer.Update(ctx)
@@ -1595,8 +1666,7 @@ func TestSetProperHead(t *testing.T) {
 	ctx := context.Background()
 	state, streamer := setupStreamerTesting(namespace, signerAddress)
 
-	syncStatus := state.SyncStatus()
-	err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+	_, err := streamer.Refresh(ctx)
 	require.NoError(t, err)
 
 	correctParentHash := createHashFromHeight(1)
@@ -1645,9 +1715,8 @@ func TestSetProperHead(t *testing.T) {
 func TestSetProperHeadNilHeadBatch(t *testing.T) {
 	ctx := context.Background()
 
-	state, streamer := setupStreamerTesting(42, common.Address{})
-	syncStatus := state.SyncStatus()
-	err := streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin)
+	_, streamer := setupStreamerTesting(42, common.Address{})
+	_, err := streamer.Refresh(ctx)
 	require.NoError(t, err)
 
 	require.NotPanics(t, func() {
@@ -1755,8 +1824,8 @@ func TestDuplicateHeadBatchDropped(t *testing.T) {
 	state, streamer := setupStreamerTesting(namespace, signerAddress)
 	rng := rand.New(rand.NewSource(11))
 
-	syncStatus := state.SyncStatus()
-	require.NoError(t, streamer.Refresh(ctx, syncStatus.FinalizedL1, syncStatus.SafeL2.Number, syncStatus.SafeL2.L1Origin))
+	_, refreshErr := streamer.Refresh(ctx)
+	require.NoError(t, refreshErr)
 
 	_, _, _, espTxn1 := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, 1, chainSigner)
 	state.AddEspressoTransactionData(0, namespace, espTxn1)

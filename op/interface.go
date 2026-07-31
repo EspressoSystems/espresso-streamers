@@ -7,6 +7,13 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// SyncStatusProvider supplies the sync status Refresh updates the streamer from. Taking
+// the whole status keeps the safe batch number and L1 origin describing the same L2 block,
+// which Reset relies on. A caller that already polls it can return its cached response.
+type SyncStatusProvider interface {
+	FetchSyncStatus(ctx context.Context) (*eth.SyncStatus, error)
+}
+
 // EspressoStreamer defines the interface for the Espresso streamer.
 type EspressoStreamer[B Batch] interface {
 	// Update will update the `EspressoStreamer“ by attempting to ensure that
@@ -26,15 +33,15 @@ type EspressoStreamer[B Batch] interface {
 	//	occurs when communicating with HotShot.
 	Update(ctx context.Context) error
 
-	// Refresh updates the local references of the EspressoStreamer to the
-	// specified values.
+	// Refresh updates the local references of the EspressoStreamer from its
+	// SyncStatusProvider, returning the status it used so callers need not poll again.
 	//
 	// These values can be used to help determine whether the Streamer needs
 	// to be reset or not.
 	//
 	// NOTE: This will only automatically reset the Streamer if the
 	// `safeBatchNumber` moves backwards.
-	Refresh(ctx context.Context, finalizedL1 eth.L1BlockRef, safeBatchNumber uint64, safeL1Origin eth.BlockID) error
+	Refresh(ctx context.Context) (*eth.SyncStatus, error)
 
 	// RefreshSafeL1Origin updates the safe L1 origin for the streamer. This is
 	// used to help the streamer determine if it needs to be reset or not based
