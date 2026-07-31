@@ -35,12 +35,11 @@ type Streamer struct {
 
 	store *batchStore
 
-	// Next HotShot height to read from. Only the poll goroutine touches it.
+	// Next HotShot height to read from.
 	hotShotPos uint64
 
 	// HotShot height guaranteed not to contain batches this streamer has yet to see,
-	// read from the light client at the finalized L2 block's L1 origin. Guarded by mu
-	// so GetFallbackHotshotPos can read it off the poll goroutine.
+	// read from the light client at the finalized L2 block's L1 origin.
 	fallbackHotShotPos uint64
 
 	logger log.Logger
@@ -352,19 +351,21 @@ func (s *Streamer) pollForFinality(ctx context.Context) uint64 {
 // finality it reports can trail the chain by that much on top of the epoch cadence.
 // Every batch waiting on its L1 origin to finalize pays for that delay, and asking L1
 // directly costs one call per finality poll.
-func (s *Streamer) getLatestFinalizedL1(ctx context.Context, reported eth.L1BlockRef) eth.L1BlockRef {
+func (s *Streamer) getLatestFinalizedL1(ctx context.Context, syncStatusFinalizedL1 eth.L1BlockRef) eth.L1BlockRef {
 	header, err := s.rollupL1Client.HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
 	if err != nil {
-		s.logger.Warn("failed to fetch the finalized L1 header, keeping the reported view",
-			"reported", reported.Number, "err", err)
-		return reported
+		s.logger.Warn("failed to fetch the finalized L1 header, keeping the syncStatusFinalizedL1 view",
+			"syncStatusFinalizedL1", syncStatusFinalizedL1.Number, "err", err)
+		return syncStatusFinalizedL1
 	}
 	if header == nil || header.Number == nil {
-		s.logger.Warn("finalized L1 header is empty, keeping the reported view", "reported", reported.Number)
-		return reported
+		s.logger.Warn("finalized L1 header is empty, keeping the syncStatusFinalizedL1 view",
+			"repsyncStatusFinalizedL1orted", syncStatusFinalizedL1.Number,
+		)
+		return syncStatusFinalizedL1
 	}
-	if header.Number.Uint64() <= reported.Number {
-		return reported
+	if header.Number.Uint64() <= syncStatusFinalizedL1.Number {
+		return syncStatusFinalizedL1
 	}
 
 	return eth.L1BlockRef{
