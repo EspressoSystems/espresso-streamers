@@ -23,43 +23,30 @@ type EspressoBatch struct {
 	Batch         derive.SingularBatch
 	L1InfoDeposit *types.Transaction
 	SignerAddress common.Address
-	// l1Finalized is the espresso network view of the finalized L1 block at
+	// L1Finalized is the espresso network view of the finalized L1 block at
 	// the time that it confirmed this batch. It is used solely to anchor the
 	// active batcher lookup for this batch, so that batcher verification is
 	// deterministic across all streamer instances. Previously the blocks' L1
 	// origin was used, but this could be chosen by an attacker to be any
 	// arbitrary block in the past, allowing compromised espresso batcher keys
 	// to be re-used regardless of age.
-	l1Finalized uint64
+	//
+	// It is attached locally after decoding rather than carried in the payload,
+	// hence excluded from the RLP encoding.
+	L1Finalized uint64 `rlp:"-"`
 }
 
 func (b EspressoBatch) Number() uint64 {
 	return b.BatchHeader.Number.Uint64()
 }
 
-func (b EspressoBatch) Signer() common.Address {
-	return b.SignerAddress
-}
-
 func (b EspressoBatch) L1Origin() eth.BlockID {
 	return b.Batch.Epoch()
-}
-
-func (b EspressoBatch) Header() *types.Header {
-	return b.BatchHeader
 }
 
 func (b EspressoBatch) Hash() common.Hash {
 	hash := crypto.Keccak256Hash(b.BatchHeader.Hash().Bytes(), b.L1InfoDeposit.Hash().Bytes())
 	return hash
-}
-
-func (b EspressoBatch) L1Finalized() uint64 {
-	return b.l1Finalized
-}
-
-func (b *EspressoBatch) SetL1Finalized(l1Finalized uint64) {
-	b.l1Finalized = l1Finalized
 }
 
 func (b *EspressoBatch) ToEspressoTransaction(ctx context.Context, namespace uint64, signer opCrypto.ChainSigner) (*espressoCommon.Transaction, error) {
@@ -144,7 +131,7 @@ func UnmarshalEspressoTransaction(data []byte, l1Finalized uint64) (*EspressoBat
 	if batch.L1InfoDeposit == nil {
 		return nil, fmt.Errorf("batch is missing the L1 info deposit transaction")
 	}
-	batch.l1Finalized = l1Finalized
+	batch.L1Finalized = l1Finalized
 
 	return &batch, nil
 }
