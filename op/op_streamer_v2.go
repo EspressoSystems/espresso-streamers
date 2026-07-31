@@ -457,27 +457,29 @@ func (s *Streamer) fetchEspressoTransactions(ctx context.Context) error {
 		return fmt.Errorf("hotshot header/transaction count mismatch for range [%d, %d): %d headers vs %d blocks",
 			s.hotShotPos, end, len(headers), len(blocks))
 	}
+	// Validate the whole range before processing any of it.
 	for i := range headers {
 		if got, want := headers[i].Header.GetBlockHeight(), s.hotShotPos+uint64(i); got != want {
 			return fmt.Errorf("hotshot headers not contiguous/ordered for range [%d, %d): header index %d has height %d, expected %d",
 				s.hotShotPos, end, i, got, want)
 		}
+		// Batches are authorized against this L1 finalized header, so one without it is
+		// unusable. It is nil only if Espresso started before the L1 finalized any block
+		// (impossible on a live chain)
+		// https://github.com/EspressoSystems/espresso-network/blob/main/crates/espresso/types/src/v0/v0_1/l1.rs#L64-L72
+		if headers[i].Header.GetL1Finalized() == nil {
+			return fmt.Errorf("hotshot header at height %d reports no finalized L1 block",
+				s.hotShotPos+uint64(i))
+		}
 	}
 
 	for i, block := range blocks {
 		hotShotHeight := s.hotShotPos + uint64(i)
-
-		// Consensus never lets this go backwards, so it is nil only before the chain's
-		// first observed L1 finality. Guarded because it is a pointer.
-		l1FinalizedInfo := headers[i].Header.GetL1Finalized()
-		if l1FinalizedInfo == nil {
-			s.logger.Error("HotShot header reports no finalized L1 block, skipping its transactions",
-				"hotShotHeight", hotShotHeight)
-			continue
-		}
+		// Non-nil, validated above.
+		l1Finalized := headers[i].Header.GetL1Finalized().Number
 
 		for _, txn := range block.Transactions {
-			s.process(ctx, hotShotHeight, l1FinalizedInfo.Number, &txn)
+			s.process(ctx, hotShotHeight, l1Finalized, &txn)
 		}
 	}
 
