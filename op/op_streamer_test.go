@@ -646,7 +646,7 @@ func TestStreamerSmoke(t *testing.T) {
 	_, streamer := setupStreamerTesting(42, common.Address{})
 
 	// update the state of our streamer
-	_, err := streamer.Refresh(ctx)
+	err := streamer.Refresh(ctx)
 
 	if have, want := err, error(nil); have != want {
 		t.Fatalf("failed to refresh streamer state encountered error:\nhave:\n\t\"%v\"\nwant:\n\t\"%v\"\n", have, want)
@@ -683,7 +683,7 @@ func TestEspressoStreamerSimpleIncremental(t *testing.T) {
 
 	for i := 0; i < N; i++ {
 		// update the state of our streamer
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 
 		if have, want := err, error(nil); have != want {
 			t.Fatalf("failed to refresh streamer state encountered error:\nhave:\n\t\"%v\"\nwant:\n\t\"%v\"\n", have, want)
@@ -744,7 +744,7 @@ func TestEspressoStreamerIncrementalDelayedConsumption(t *testing.T) {
 	var batches []*derive.SingularBatch
 
 	// update the state of our streamer
-	_, err := streamer.Refresh(ctx)
+	err := streamer.Refresh(ctx)
 
 	for i := 0; i < N; i++ {
 		batch, _, _, espTxnInBlock := state.CreateEspressoTxnData(
@@ -811,7 +811,7 @@ func TestStreamerEspressoOutOfOrder(t *testing.T) {
 	rng := rand.New(rand.NewSource(0))
 
 	// update the state of our streamer
-	_, err := streamer.Refresh(ctx)
+	err := streamer.Refresh(ctx)
 
 	if have, want := err, error(nil); have != want {
 		t.Fatalf("failed to refresh streamer state encountered error:\nhave:\n\t\"%v\"\nwant:\n\t\"%v\"\n", have, want)
@@ -895,7 +895,7 @@ func TestEspressoStreamerDuplicationHandling(t *testing.T) {
 	rng := rand.New(rand.NewSource(0))
 
 	// update the state of our streamer
-	_, err := streamer.Refresh(ctx)
+	err := streamer.Refresh(ctx)
 
 	if have, want := err, error(nil); have != want {
 		t.Fatalf("failed to refresh streamer state encountered error:\nhave:\n\t\"%v\"\nwant:\n\t\"%v\"\n", have, want)
@@ -915,7 +915,7 @@ func TestEspressoStreamerDuplicationHandling(t *testing.T) {
 		// duplicate the batch
 		for j := 0; j < 2; j++ {
 			// update the state of our streamer
-			_, err := streamer.Refresh(ctx)
+			err := streamer.Refresh(ctx)
 
 			require.NoError(t, err)
 
@@ -1005,7 +1005,7 @@ func TestStreamerInvalidHeadBatchDiscarded(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 
 	// Refresh state - after this, BatchPos becomes 1
-	_, err := streamer.Refresh(ctx)
+	err := streamer.Refresh(ctx)
 	require.NoError(t, err)
 
 	// Create batch 1 with INVALID L1 origin hash (using a hash that won't match)
@@ -1053,7 +1053,7 @@ func TestStreamerMultipleBatchesSameNumber(t *testing.T) {
 		rng := rand.New(rand.NewSource(3))
 
 		// Refresh state - after this, BatchPos becomes 1
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		invalidHash := common.HexToHash("0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
@@ -1104,7 +1104,7 @@ func TestStreamerMultipleBatchesSameNumber(t *testing.T) {
 		rng := rand.New(rand.NewSource(4))
 
 		// Refresh state - after this, BatchPos becomes 1
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		invalidHash := common.HexToHash("0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
@@ -1138,7 +1138,7 @@ func TestStreamerMultipleBatchesSameNumber(t *testing.T) {
 		rng := rand.New(rand.NewSource(5))
 
 		// Refresh state - after this, BatchPos becomes 1
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// Create 2 valid batches for number 1 with different hashes
@@ -1203,7 +1203,7 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 
 		rng := rand.New(rand.NewSource(99))
 
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// Place enough batches to fill the buffer and overflow by one full
@@ -1264,7 +1264,7 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 
 		rng := rand.New(rand.NewSource(7))
 
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// Fill buffer with future batches (2, 3, 4, ...)
@@ -1306,7 +1306,7 @@ func TestStreamerBufferCapacityAndSkipPos(t *testing.T) {
 
 		rng := rand.New(rand.NewSource(42))
 
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// Fill the buffer to exactly BatchBufferCapacity. LatestEspHeight ends at
@@ -1375,7 +1375,7 @@ func TestStreamerBatchOrderingDeterminism(t *testing.T) {
 		// status, so the mock's own position is what controls it.
 		// After this refresh, BatchPos becomes 1
 		l1Height1 := createL1BlockRef(1)
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// Insert batch a1 (number 1, L1 origin at height 2 - NOT finalized yet)
@@ -1404,7 +1404,7 @@ func TestStreamerBatchOrderingDeterminism(t *testing.T) {
 
 		// Now advance L1 finalized to height 2
 		state.AdvanceFinalizedL1()
-		_, err = streamer.Refresh(ctx)
+		err = streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// HasNext should now return true
@@ -1428,7 +1428,7 @@ func TestStreamerBatchOrderingDeterminism(t *testing.T) {
 		rng := rand.New(rand.NewSource(9))
 
 		// Refresh state - after this, BatchPos becomes 1
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// First Update: insert batch a1 (number 1)
@@ -1483,7 +1483,7 @@ func TestRefreshKeepsFallbackAnchorCoherentWhenLightClientFails(t *testing.T) {
 	// Get the anchor to a healthy, advanced pair first.
 	state.AdvanceEspressoHeightByNBlocks(500)
 	state.AdvanceL2ByNBlocks(50)
-	_, err := streamer.Refresh(ctx)
+	err := streamer.Refresh(ctx)
 	require.NoError(t, err)
 
 	advancedHotShot := streamer.fallbackHotShotPos
@@ -1497,7 +1497,7 @@ func TestRefreshKeepsFallbackAnchorCoherentWhenLightClientFails(t *testing.T) {
 	state.SafeL2 = createL2BlockRef(advancedBatch-10, state.FinalizedL1)
 	state.FinalizedL2 = state.SafeL2
 
-	_, err = streamer.Refresh(ctx)
+	err = streamer.Refresh(ctx)
 	require.NoError(t, err, "a light client outage is not fatal to Refresh")
 
 	require.Equal(t, advancedBatch, streamer.fallbackBatchPos,
@@ -1519,10 +1519,9 @@ func TestRefreshFailsWithoutSyncStatus(t *testing.T) {
 	hotShotPos, fallbackHotShot := streamer.hotShotPos, streamer.fallbackHotShotPos
 
 	state.SyncStatusErr = errors.New("op-node unreachable")
-	status, err := streamer.Refresh(context.Background())
+	err := streamer.Refresh(context.Background())
 
 	require.ErrorContains(t, err, "failed to fetch sync status")
-	require.Nil(t, status)
 	require.Equal(t, batchPos, streamer.nextBatchPos, "positions must not move on a failed refresh")
 	require.Equal(t, fallbackBatch, streamer.fallbackBatchPos)
 	require.Equal(t, hotShotPos, streamer.hotShotPos)
@@ -1544,7 +1543,7 @@ func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
 		// After fallbackBatchPos is updated to 10, BatchPos(2) <= 10 → reset.
 		safeBatchNumber := uint64(10)
 		state.SafeL2 = createL2BlockRef(safeBatchNumber, state.FinalizedL1)
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// After reset: BatchPos = fallbackBatchPos + 1 = 11
@@ -1565,7 +1564,7 @@ func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
 		// After fallbackBatchPos is updated to 2, BatchPos(2) <= 2 → reset.
 		safeBatchNumber := uint64(2)
 		state.SafeL2 = createL2BlockRef(safeBatchNumber, state.FinalizedL1)
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// After reset: BatchPos = fallbackBatchPos + 1 = 3
@@ -1585,7 +1584,7 @@ func TestRefreshResetsWhenBatchPosLagsBehindSafeBatch(t *testing.T) {
 
 		safeBatchNumber := uint64(5)
 		state.SafeL2 = createL2BlockRef(safeBatchNumber, state.FinalizedL1)
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		// No reset should happen
@@ -1614,7 +1613,7 @@ func TestPeek(t *testing.T) {
 		state, streamer := setupStreamerTesting(namespace, signerAddress)
 		rng := rand.New(rand.NewSource(10))
 
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		l2Height := 1
@@ -1643,7 +1642,7 @@ func TestPeek(t *testing.T) {
 
 		_, streamer := setupStreamerTesting(namespace, signerAddress)
 
-		_, err := streamer.Refresh(ctx)
+		err := streamer.Refresh(ctx)
 		require.NoError(t, err)
 
 		err = streamer.Update(ctx)
@@ -1666,7 +1665,7 @@ func TestSetProperHead(t *testing.T) {
 	ctx := context.Background()
 	state, streamer := setupStreamerTesting(namespace, signerAddress)
 
-	_, err := streamer.Refresh(ctx)
+	err := streamer.Refresh(ctx)
 	require.NoError(t, err)
 
 	correctParentHash := createHashFromHeight(1)
@@ -1716,7 +1715,7 @@ func TestSetProperHeadNilHeadBatch(t *testing.T) {
 	ctx := context.Background()
 
 	_, streamer := setupStreamerTesting(42, common.Address{})
-	_, err := streamer.Refresh(ctx)
+	err := streamer.Refresh(ctx)
 	require.NoError(t, err)
 
 	require.NotPanics(t, func() {
@@ -1824,8 +1823,7 @@ func TestDuplicateHeadBatchDropped(t *testing.T) {
 	state, streamer := setupStreamerTesting(namespace, signerAddress)
 	rng := rand.New(rand.NewSource(11))
 
-	_, refreshErr := streamer.Refresh(ctx)
-	require.NoError(t, refreshErr)
+	require.NoError(t, streamer.Refresh(ctx))
 
 	_, _, _, espTxn1 := state.CreateEspressoTxnData(ctx, namespace, rng, chainID, 1, chainSigner)
 	state.AddEspressoTransactionData(0, namespace, espTxn1)

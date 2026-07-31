@@ -105,7 +105,7 @@ func refreshWith[B espresso.Batch](
 	ctx context.Context,
 	m *MockStreamer[B],
 	s interface {
-		Refresh(context.Context) (*eth.SyncStatus, error)
+		Refresh(context.Context) error
 	},
 	finalizedL1 eth.L1BlockRef,
 	safeBatchNumber uint64,
@@ -119,20 +119,28 @@ func refreshWith[B espresso.Batch](
 		FinalizedL2: eth.L2BlockRef{L1Origin: l1Origin},
 	}
 
-	_, err := s.Refresh(ctx)
-	require.NoError(t, err)
+	require.NoError(t, s.Refresh(ctx))
 }
 
 // Refresh implements espresso.EspressoStreamer, reading positions from SyncStatus.
-func (m *MockStreamer[B]) Refresh(ctx context.Context) (*eth.SyncStatus, error) {
+func (m *MockStreamer[B]) Refresh(ctx context.Context) error {
 	if m.SyncStatus == nil {
-		return nil, errors.New("MockStreamer.SyncStatus not set")
+		return errors.New("MockStreamer.SyncStatus not set")
 	}
 
 	m.RefreshSafeL1Origin(m.SyncStatus.FinalizedL2.L1Origin)
 
 	m.currentFinalizedL1 = m.SyncStatus.FinalizedL1
 	m.currentSafeL1Origin = m.SyncStatus.FinalizedL2.L1Origin
+	return nil
+}
+
+// FetchSyncStatus implements op.SyncStatusProvider, so the mock can serve as the buffered
+// streamer's provider too.
+func (m *MockStreamer[B]) FetchSyncStatus(ctx context.Context) (*eth.SyncStatus, error) {
+	if m.SyncStatus == nil {
+		return nil, errors.New("MockStreamer.SyncStatus not set")
+	}
 	return m.SyncStatus, nil
 }
 
@@ -255,7 +263,7 @@ func TestBufferedStreamerMitigationBehavior(t *testing.T) {
 	mockStreamer := &MockStreamer[BatchMock]{
 		createBatch: createBatchMock,
 	}
-	streamer := op.NewBufferedEspressoStreamer(mockStreamer)
+	streamer := op.NewBufferedEspressoStreamer(mockStreamer, mockStreamer)
 
 	// Refresh the streamer with an advanced safe L1 origin
 	refreshWith(t, ctx, mockStreamer, streamer, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10})
@@ -289,7 +297,7 @@ func TestBufferedStreamerReOrgBehavior(t *testing.T) {
 	mockStreamer := &MockStreamer[BatchMock]{
 		createBatch: createBatchMock,
 	}
-	streamer := op.NewBufferedEspressoStreamer(mockStreamer)
+	streamer := op.NewBufferedEspressoStreamer(mockStreamer, mockStreamer)
 
 	// Refresh the streamer with an advanced safe L1 origin
 	refreshWith(t, ctx, mockStreamer, streamer, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10})
@@ -315,7 +323,7 @@ func TestBufferedStreamerPeek(t *testing.T) {
 		mockStreamer := &MockStreamer[BatchMock]{
 			createBatch: createBatchMock,
 		}
-		streamer := op.NewBufferedEspressoStreamer(mockStreamer)
+		streamer := op.NewBufferedEspressoStreamer(mockStreamer, mockStreamer)
 
 		refreshWith(t, ctx, mockStreamer, streamer, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10})
 
@@ -348,7 +356,7 @@ func TestBufferedStreamerPeek(t *testing.T) {
 		mockStreamer := &MockStreamer[BatchMock]{
 			createBatch: createBatchMock,
 		}
-		streamer := op.NewBufferedEspressoStreamer(mockStreamer)
+		streamer := op.NewBufferedEspressoStreamer(mockStreamer, mockStreamer)
 
 		refreshWith(t, ctx, mockStreamer, streamer, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10})
 
@@ -366,7 +374,7 @@ func TestBufferedStreamerPeek(t *testing.T) {
 		mockStreamer := &MockStreamer[BatchMock]{
 			createBatch: createBatchMock,
 		}
-		streamer := op.NewBufferedEspressoStreamer(mockStreamer)
+		streamer := op.NewBufferedEspressoStreamer(mockStreamer, mockStreamer)
 
 		refreshWith(t, ctx, mockStreamer, streamer, eth.L1BlockRef{Number: 5}, 5, eth.BlockID{Number: 10})
 
@@ -383,7 +391,7 @@ func TestBufferedStreamerReadPosBehindAdjustment(t *testing.T) {
 	mockStreamer := &MockStreamer[BatchMock]{
 		createBatch: createBatchMock,
 	}
-	streamer := op.NewBufferedEspressoStreamer(mockStreamer)
+	streamer := op.NewBufferedEspressoStreamer(mockStreamer, mockStreamer)
 
 	refreshWith(t, ctx, mockStreamer, streamer, eth.L1BlockRef{Number: 1}, 0, eth.BlockID{Number: 1})
 
@@ -416,7 +424,7 @@ func TestBufferedStreamerGetFallbackHotshotPos(t *testing.T) {
 		createBatch:        createBatchMock,
 		fallbackHotshotPos: 42,
 	}
-	streamer := op.NewBufferedEspressoStreamer(mockStreamer)
+	streamer := op.NewBufferedEspressoStreamer(mockStreamer, mockStreamer)
 
 	refreshWith(t, ctx, mockStreamer, streamer, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10})
 

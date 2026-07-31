@@ -222,15 +222,15 @@ func (s *BatchStreamer[B]) RefreshSafeL1Origin(safeL1Origin eth.BlockID) {
 	s.refreshFallback(s.fallbackBatchPos, safeL1Origin)
 }
 
-// Refresh updates streamer state from the sync status and returns it for the caller to
-// reuse. Reading the positions from one status keeps them related to each other.
-func (s *BatchStreamer[B]) Refresh(ctx context.Context) (*eth.SyncStatus, error) {
+// Refresh updates streamer state from the sync status. Reading the positions from one
+// status keeps them related to each other.
+func (s *BatchStreamer[B]) Refresh(ctx context.Context) error {
 	syncStatus, err := s.SyncStatusProvider.FetchSyncStatus(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch sync status: %w", err)
+		return fmt.Errorf("failed to fetch sync status: %w", err)
 	}
 	if syncStatus == nil {
-		return nil, errors.New("sync status is nil")
+		return errors.New("sync status is nil")
 	}
 
 	// Batch position from the safe head, L1 origin from the finalized head: the older origin
@@ -243,7 +243,7 @@ func (s *BatchStreamer[B]) Refresh(ctx context.Context) (*eth.SyncStatus, error)
 
 	s.refreshFallback(safeBatchNumber, safeL1Origin)
 
-	return syncStatus, nil
+	return nil
 }
 
 // CheckBatch validates a batch: its signer must be the batcher authorized at the

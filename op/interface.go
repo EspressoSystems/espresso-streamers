@@ -34,14 +34,14 @@ type EspressoStreamer[B Batch] interface {
 	Update(ctx context.Context) error
 
 	// Refresh updates the local references of the EspressoStreamer from its
-	// SyncStatusProvider, returning the status it used so callers need not poll again.
+	// SyncStatusProvider.
 	//
 	// These values can be used to help determine whether the Streamer needs
 	// to be reset or not.
 	//
 	// NOTE: This will only automatically reset the Streamer if the
 	// `safeBatchNumber` moves backwards.
-	Refresh(ctx context.Context) (*eth.SyncStatus, error)
+	Refresh(ctx context.Context) error
 
 	// RefreshSafeL1Origin updates the safe L1 origin for the streamer. This is
 	// used to help the streamer determine if it needs to be reset or not based
