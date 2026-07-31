@@ -8,6 +8,7 @@ import (
 	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // BatchValidity is the verdict checkBatch reaches about a batch.
@@ -86,6 +87,7 @@ type EspressoClient interface {
 // the L1 client.
 type L1Client interface {
 	HeaderHashByNumber(ctx context.Context, number *big.Int) (common.Hash, error)
+	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
 	bind.ContractCaller
 }
 

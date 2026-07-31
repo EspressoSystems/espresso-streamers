@@ -679,6 +679,37 @@ func TestFetchNoOpWhenCaughtUp(t *testing.T) {
 	require.Equal(t, latest, streamer.hotShotPos, "position must not move when already caught up")
 }
 
+// TestPollForFinalityTakesTheFurtherAheadL1View covers reading L1 finality straight from
+// the chain alongside the sync status: op-node polls the finalized tag only every
+// l1.epoch-poll-interval, so its view can trail the chain and every batch waiting on its
+// origin to finalize pays for the lag.
+func TestPollForFinalityTakesTheFurtherAheadL1View(t *testing.T) {
+	ctx := context.Background()
+	state, streamer := newTestStreamer(t, 42, common.Address{}, 1)
+
+	// Sync status stuck at 11 while the chain has finalized 40.
+	state.AdvanceFinalizedL1ByNBlocks(10)
+	ahead := uint64(40)
+	state.L1FinalizedTagHeight = &ahead
+
+	streamer.pollForFinality(ctx)
+	require.Equal(t, ahead, streamer.finalizedL1.Number,
+		"the chain's own finalized tag is further ahead, so it should win")
+
+	// The reported view wins when it is the further ahead of the two.
+	behind := uint64(20)
+	state.L1FinalizedTagHeight = &behind
+	state.FinalizedL1 = createL1BlockRef(60)
+	streamer.pollForFinality(ctx)
+	require.Equal(t, uint64(60), streamer.finalizedL1.Number)
+
+	// A failing L1 read is not fatal: the reported view stands.
+	state.HeaderByNumberErr = errors.New("l1 unreachable")
+	state.FinalizedL1 = createL1BlockRef(80)
+	streamer.pollForFinality(ctx)
+	require.Equal(t, uint64(80), streamer.finalizedL1.Number)
+}
+
 func TestPollForFinalityIgnoresRegressedFinalizedL1(t *testing.T) {
 	ctx := context.Background()
 	state, streamer := newTestStreamer(t, 42, common.Address{}, 1)

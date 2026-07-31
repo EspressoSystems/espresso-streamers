@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	geth_types "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // TestNewEspressoStreamer tests that we can create a new EspressoStreamer
@@ -87,6 +88,13 @@ type MockStreamerSource struct {
 	// LatestHeightCalls counts FetchLatestBlockHeight calls, which is once per HotShot
 	// loop iteration. Atomic because that loop runs on its own goroutine.
 	LatestHeightCalls atomic.Int64
+
+	// L1FinalizedTagHeight, when set, is the height HeaderByNumber reports for the
+	// finalized tag - the L1 chain's own view, which can run ahead of FinalizedL1 as
+	// reported by SyncStatus.
+	L1FinalizedTagHeight *uint64
+	// HeaderByNumberErr, when set, makes every HeaderByNumber call fail.
+	HeaderByNumberErr error
 	// HotShotL1Finalized overrides the finalized L1 block reported in the HotShot
 	// header for a given HotShot block height in FetchHeadersByRange. Set an entry
 	// to model HotShot's view of L1 finality diverging from our node's.
@@ -241,6 +249,27 @@ var _ L1Client = (*MockStreamerSource)(nil)
 func (m *MockStreamerSource) HeaderHashByNumber(ctx context.Context, number *big.Int) (common.Hash, error) {
 	l1Ref := createL1BlockRef(number.Uint64())
 	return l1Ref.Hash, nil
+}
+
+// HeaderByNumber resolves a height, or the negative rpc tags. The finalized tag answers
+// with L1FinalizedTagHeight when a test sets it, so the chain's own finality can be
+// modelled as running ahead of what SyncStatus reports; otherwise the two agree.
+func (m *MockStreamerSource) HeaderByNumber(ctx context.Context, number *big.Int) (*geth_types.Header, error) {
+	if m.HeaderByNumberErr != nil {
+		return nil, m.HeaderByNumberErr
+	}
+
+	height := m.FinalizedL1.Number
+	if number != nil && number.Sign() >= 0 {
+		height = number.Uint64()
+	} else if number != nil && number.Int64() == int64(rpc.FinalizedBlockNumber) && m.L1FinalizedTagHeight != nil {
+		height = *m.L1FinalizedTagHeight
+	}
+
+	return &geth_types.Header{
+		Number: new(big.Int).SetUint64(height),
+		Time:   height,
+	}, nil
 }
 
 // espressoBatcherAtBlockSelector is the 4-byte function selector for

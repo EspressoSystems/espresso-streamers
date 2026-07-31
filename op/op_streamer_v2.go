@@ -16,13 +16,14 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rpc"
 	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 const pollRPCTimeout = 10 * time.Second
 
 // defaultFinalityInterval paces the finality loop.
-const defaultFinalityInterval = 1 * time.Second
+const defaultFinalityInterval = 10 * time.Second
 
 type Streamer struct {
 	espressoClient           EspressoClient
@@ -317,21 +318,22 @@ func (s *Streamer) pollForFinality(ctx context.Context) uint64 {
 		s.logger.Warn("sync status is nil")
 		return 0
 	}
-	if syncStatus.FinalizedL1 == (eth.L1BlockRef{}) {
+	finalizedL1 := s.getLatestFinalizedL1(ctx, syncStatus.FinalizedL1)
+	if finalizedL1 == (eth.L1BlockRef{}) {
 		s.logger.Warn("finalized L1 block is empty")
 		return 0
 	}
 
 	s.mu.Lock()
 	// L1 finality is monotonic, so a lower number means the sync source regressed
-	if syncStatus.FinalizedL1.Number < s.finalizedL1.Number {
+	if finalizedL1.Number < s.finalizedL1.Number {
 		current := s.finalizedL1
 		s.mu.Unlock()
 		s.logger.Warn("ignoring regressed finalized L1 block",
-			"current", current.Number, "reported", syncStatus.FinalizedL1.Number)
+			"current", current.Number, "reported", finalizedL1.Number)
 		return 0
 	}
-	s.finalizedL1 = syncStatus.FinalizedL1
+	s.finalizedL1 = finalizedL1
 	s.mu.Unlock()
 
 	// Nothing is finalized yet, so there is no L1 origin to pin a HotShot height to.
@@ -341,6 +343,36 @@ func (s *Streamer) pollForFinality(ctx context.Context) uint64 {
 	s.confirmEspressoBlockHeight(ctx, syncStatus.FinalizedL2.L1Origin)
 
 	return syncStatus.FinalizedL2.Number
+}
+
+// getLatestFinalizedL1 returns whichever view of L1 finality is further ahead: the one the
+// sync status reports, or the L1 chain's own finalized tag.
+//
+// op-node polls that tag only every `l1.epoch-poll-interval` (384s by default), so the
+// finality it reports can trail the chain by that much on top of the epoch cadence.
+// Every batch waiting on its L1 origin to finalize pays for that delay, and asking L1
+// directly costs one call per finality poll.
+func (s *Streamer) getLatestFinalizedL1(ctx context.Context, reported eth.L1BlockRef) eth.L1BlockRef {
+	header, err := s.rollupL1Client.HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
+	if err != nil {
+		s.logger.Warn("failed to fetch the finalized L1 header, keeping the reported view",
+			"reported", reported.Number, "err", err)
+		return reported
+	}
+	if header == nil || header.Number == nil {
+		s.logger.Warn("finalized L1 header is empty, keeping the reported view", "reported", reported.Number)
+		return reported
+	}
+	if header.Number.Uint64() <= reported.Number {
+		return reported
+	}
+
+	return eth.L1BlockRef{
+		Number:     header.Number.Uint64(),
+		Hash:       header.Hash(),
+		ParentHash: header.ParentHash,
+		Time:       header.Time,
+	}
 }
 
 // confirmEspressoBlockHeight pins the HotShot height that is guaranteed not to hold
