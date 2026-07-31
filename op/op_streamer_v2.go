@@ -392,9 +392,9 @@ func (s *Streamer) fetchEspressoTransactions(ctx context.Context) error {
 
 	end := s.hotShotPos + HOTSHOT_BLOCK_FETCH_LIMIT
 
-	// `FetchNamespaceTransactionsInRange` is exclusive to finish, so we add 1 to currentBlockHeight
-	if end > finalizedBlockHeight+1 {
-		end = finalizedBlockHeight + 1
+	// Don't go past whats finalized
+	if end > finalizedBlockHeight {
+		end = finalizedBlockHeight
 	}
 
 	blocks, err := s.espressoClient.FetchNamespaceTransactionsInRange(ctx, s.hotShotPos, end, s.namespace)
