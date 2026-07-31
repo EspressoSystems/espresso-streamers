@@ -97,6 +97,7 @@ type BatchStreamer[B Batch] struct {
 	EspressoClient           EspressoClient
 	EspressoLightClient      LightClientCallerInterface
 	BatchAuthenticatorCaller *bindings.BatchAuthenticatorCaller
+	SyncStatusProvider       SyncStatusProvider
 	Log                      log.Logger
 	HotShotPollingInterval   time.Duration
 
@@ -149,6 +150,7 @@ func NewEspressoStreamer[B Batch](
 	rollupL1Client L1Client,
 	espressoClient EspressoClient,
 	lightClient LightClientCallerInterface,
+	syncStatusProvider SyncStatusProvider,
 	log log.Logger,
 	unmarshalBatch func(data []byte, l1Finalized uint64) (*B, error),
 	originHotShotPos uint64,
@@ -158,6 +160,9 @@ func NewEspressoStreamer[B Batch](
 ) (*BatchStreamer[B], error) {
 	if batchAuthenticatorAddress == (common.Address{}) {
 		return nil, errors.New("BatchAuthenticator address must be set for Espresso streamer")
+	}
+	if syncStatusProvider == nil {
+		return nil, errors.New("SyncStatusProvider must be set: Refresh reads the safe and finalized positions from it")
 	}
 
 	finalizedL1StateCache, _ := simplelru.NewLRU[uint64, l1State](1000, nil)
@@ -179,6 +184,7 @@ func NewEspressoStreamer[B Batch](
 		EspressoClient:           espressoClient,
 		EspressoLightClient:      lightClient,
 		BatchAuthenticatorCaller: batchAuthenticatorCaller,
+		SyncStatusProvider:       syncStatusProvider,
 		Log:                      log,
 		Namespace:                namespace,
 		// Internally, nextBatchPos is the position of the batch we are to give out next, hence the +1
@@ -212,40 +218,31 @@ func (s *BatchStreamer[B]) Reset() {
 // safe L1 origin of the Streamer. It will confirm the Espresso Block Height
 // and reset the state if necessary.
 func (s *BatchStreamer[B]) RefreshSafeL1Origin(safeL1Origin eth.BlockID) {
-	shouldReset := s.confirmEspressoBlockHeight(safeL1Origin)
-	if shouldReset {
-		s.Reset()
-	}
+	// Only the origin is known here, so the batch half of the anchor stays where it is.
+	s.refreshFallback(s.fallbackBatchPos, safeL1Origin)
 }
 
-// Update streamer state based on L1 and L2 sync status
-func (s *BatchStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockRef, safeBatchNumber uint64, safeL1Origin eth.BlockID) error {
-	s.FinalizedL1 = finalizedL1
-
-	s.RefreshSafeL1Origin(safeL1Origin)
-
-	// NOTE: be sure to update s.finalizedL1 before checking this condition and returning
-	if s.fallbackBatchPos == safeBatchNumber {
-		// This means everything is in sync, no state update needed
-		return nil
+// Refresh updates streamer state from the sync status. Reading the positions from one
+// status keeps them related to each other.
+func (s *BatchStreamer[B]) Refresh(ctx context.Context) error {
+	syncStatus, err := s.SyncStatusProvider.FetchSyncStatus(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch sync status: %w", err)
+	}
+	if syncStatus == nil {
+		return errors.New("sync status is nil")
 	}
 
-	shouldReset := safeBatchNumber < s.fallbackBatchPos
+	// Batch position from the safe head, L1 origin from the finalized head: the older origin
+	// anchors the fallback below the safe one, so a reset rewinds too far rather than too little.
+	safeBatchNumber := syncStatus.SafeL2.Number
+	safeL1Origin := syncStatus.FinalizedL2.L1Origin
 
-	// We should also reset if fallback position is higher than what we're currently reading from
-	shouldReset = shouldReset || (s.fallbackHotShotPos > s.hotShotPos)
+	// NOTE: be sure to update s.FinalizedL1 before refreshing the anchor
+	s.FinalizedL1 = syncStatus.FinalizedL1
 
-	s.fallbackBatchPos = safeBatchNumber
+	s.refreshFallback(safeBatchNumber, safeL1Origin)
 
-	// If BatchPos is lagging behind the safe batch Pos, we trigger a reset.
-	// This generally means that safe batch number was updated by another batcher
-	if s.nextBatchPos <= s.fallbackBatchPos {
-		shouldReset = true
-	}
-
-	if shouldReset {
-		s.Reset()
-	}
 	return nil
 }
 
@@ -763,36 +760,66 @@ func (s *BatchStreamer[B]) HasNext(ctx context.Context) bool {
 //
 // We do not propagate the error if Light Client is unreachable - this is not an essential
 // operation and streamer can continue operation
-func (s *BatchStreamer[B]) confirmEspressoBlockHeight(safeL1Origin eth.BlockID) (shouldReset bool) {
-	shouldReset = false
-
+// confirmEspressoBlockHeight reads the HotShot height guaranteed not to contain any batch
+// with an L1 origin at or beyond safeL1Origin, from the light client at that L1 block. It
+// mutates nothing: the fallback anchor's two halves must move together, so that is the
+// caller's call.
+func (s *BatchStreamer[B]) confirmEspressoBlockHeight(safeL1Origin eth.BlockID) (uint64, error) {
 	hotshotState, err := s.EspressoLightClient.
 		FinalizedState(&bind.CallOpts{BlockNumber: new(big.Int).SetUint64(safeL1Origin.Number)})
-
 	if err != nil {
-		// If we have already advanced our fallback position before, there's no need to roll it back
-		s.fallbackHotShotPos = max(s.fallbackHotShotPos, s.originHotShotPos)
-		s.Log.Warn("failed to get finalized state from light client", "err", err)
-		return false
+		return 0, err
 	}
 
-	// If hotshot block height at L1 origin is lower than our
-	// hotshot origin, we never want to update our fallback
-	// position to this height, or we risk dipping below
-	// hotshot origin on reset.
-	if hotshotState.BlockHeight <= s.originHotShotPos {
-		s.Log.Debug("HotShot height at L1 Origin less than HotShot origin of the streamer, ignoring")
-		return shouldReset
+	return hotshotState.BlockHeight, nil
+}
+
+// refreshFallback moves the fallback anchor to a new observation, resetting if it calls for
+// one.
+//
+// Reset seeds hotShotPos and nextBatchPos from the anchor's two halves, and a HotShot
+// position past the block carrying nextBatchPos is unreachable to a forward-only scan. So
+// neither half moves unless both can.
+func (s *BatchStreamer[B]) refreshFallback(safeBatchNumber uint64, safeL1Origin eth.BlockID) {
+	hotShotHeight, err := s.confirmEspressoBlockHeight(safeL1Origin)
+	if err != nil {
+		// Moving the batch half alone would pair it with a stale HotShot one. Keep the last
+		// good pair; the cost is only a deferred reset.
+		s.Log.Warn("failed to get finalized state from light client, leaving the fallback anchor untouched",
+			"err", err,
+			"fallbackBatchPos", s.fallbackBatchPos,
+			"fallbackHotShotPos", s.fallbackHotShotPos,
+			"safeBatchNumber", safeBatchNumber,
+			"safeL1Origin", safeL1Origin.Number)
+		return
 	}
 
-	// If we assigned to fallback position from hotsthot height before
-	// and now the light client reports a smaller height, there was an L1
-	// reorg and we should reset our state
-	shouldReset = hotshotState.BlockHeight < s.fallbackHotShotPos
+	// Below our origin is no use as a fallback, and the origin is safe for any batch we
+	// serve - so anchor there rather than keep a higher, older value.
+	if hotShotHeight <= s.originHotShotPos {
+		s.Log.Debug("HotShot height at L1 Origin less than HotShot origin of the streamer, anchoring at the origin",
+			"height", hotShotHeight, "originHotShotPos", s.originHotShotPos)
+		hotShotHeight = s.originHotShotPos
+	}
 
-	s.fallbackHotShotPos = hotshotState.BlockHeight
+	// A backwards anchor means an L1 reorg, which is reason enough on its own.
+	shouldReset := hotShotHeight < s.fallbackHotShotPos
 
-	return shouldReset
+	// The rest concern the batch position, so they only apply when it moved: otherwise the
+	// fast-forward would fire on every refresh while we are simply reading behind.
+	if safeBatchNumber != s.fallbackBatchPos {
+		shouldReset = shouldReset ||
+			safeBatchNumber < s.fallbackBatchPos || // the safe head regressed
+			hotShotHeight > s.hotShotPos || // the anchor is ahead of where we are reading
+			s.nextBatchPos <= safeBatchNumber // we are at or behind the safe head
+	}
+
+	s.fallbackHotShotPos = hotShotHeight
+	s.fallbackBatchPos = safeBatchNumber
+
+	if shouldReset {
+		s.Reset()
+	}
 }
 
 // GetFallbackHotshotPos is a helper function that allows us

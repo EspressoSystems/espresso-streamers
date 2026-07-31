@@ -2,6 +2,7 @@ package op
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ethereum-optimism/optimism/op-service/eth"
 	"github.com/ethereum/go-ethereum/common"
@@ -25,7 +26,8 @@ import (
 // This allows us to avoid needing to rewind the streamer, and instead just
 // adjust the read position of the buffered streamer.
 type BufferedEspressoStreamer[B Batch] struct {
-	streamer EspressoStreamer[B]
+	streamer           EspressoStreamer[B]
+	syncStatusProvider SyncStatusProvider
 
 	batches []*B
 
@@ -41,9 +43,13 @@ type BufferedEspressoStreamer[B Batch] struct {
 var _ EspressoStreamer[Batch] = (*BufferedEspressoStreamer[Batch])(nil)
 
 // NewBufferedEspressoStreamer creates a new BufferedEspressoStreamer instance.
-func NewBufferedEspressoStreamer[B Batch](streamer EspressoStreamer[B]) *BufferedEspressoStreamer[B] {
+func NewBufferedEspressoStreamer[B Batch](
+	streamer EspressoStreamer[B],
+	syncStatusProvider SyncStatusProvider,
+) *BufferedEspressoStreamer[B] {
 	return &BufferedEspressoStreamer[B]{
-		streamer: streamer,
+		streamer:           streamer,
+		syncStatusProvider: syncStatusProvider,
 	}
 }
 
@@ -124,12 +130,22 @@ func (b *BufferedEspressoStreamer[B]) RefreshSafeL1Origin(safeL1Origin eth.Block
 	b.currentSafeL1Origin = safeL1Origin
 }
 
-// Refresh implements EspressoStreamerIFace
-func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context, finalizedL1 eth.L1BlockRef, safeBatchNumber uint64, safeL1Origin eth.BlockID) error {
-	b.handleL2PositionUpdate(safeBatchNumber)
-	b.RefreshSafeL1Origin(safeL1Origin)
+// Refresh implements EspressoStreamerIFace. It applies the buffer's own bookkeeping from the
+// same sync status the wrapped streamer refreshes from.
+func (b *BufferedEspressoStreamer[B]) Refresh(ctx context.Context) error {
+	if err := b.streamer.Refresh(ctx); err != nil {
+		return err
+	}
 
-	return b.streamer.Refresh(ctx, finalizedL1, safeBatchNumber, safeL1Origin)
+	syncStatus, err := b.syncStatusProvider.FetchSyncStatus(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch sync status: %w", err)
+	}
+
+	b.handleL2PositionUpdate(syncStatus.SafeL2.Number)
+	b.RefreshSafeL1Origin(syncStatus.FinalizedL2.L1Origin)
+
+	return nil
 }
 
 // Reset rewinds the start of the cached batch window.
