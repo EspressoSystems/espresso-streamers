@@ -2,7 +2,6 @@ package op
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 
 	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
@@ -10,36 +9,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
-
-// BatchValidity is the verdict checkBatch reaches about a batch.
-type BatchValidity uint8
-
-const (
-	// BatchDrop indicates that the batch is invalid and will stay invalid, absent a reorg
-	BatchDrop BatchValidity = iota
-	// BatchAccept indicates that the batch is valid and should be processed
-	BatchAccept
-	// BatchUndecided indicates we are lacking L1 information until we can proceed batch filtering
-	BatchUndecided
-	// BatchPast indicates that the batch is at or below the finalized L2 head, so it has
-	// already been derived and there is nothing left to do with it.
-	BatchPast
-)
-
-func (v BatchValidity) String() string {
-	switch v {
-	case BatchDrop:
-		return "drop"
-	case BatchAccept:
-		return "accept"
-	case BatchUndecided:
-		return "undecided"
-	case BatchPast:
-		return "past"
-	default:
-		return fmt.Sprintf("unknown(%d)", uint8(v))
-	}
-}
 
 // DroppingBatchLogPrefix is the log message prefix used when dropping a batch.
 //
@@ -53,24 +22,6 @@ const DroppingBatchLogPrefix = "Dropping batch"
 // This helps to limit our block polling to a limited number of blocks within
 // a single batched attempt.
 const HOTSHOT_BLOCK_FETCH_LIMIT = 100
-
-// Espresso light client bindings don't have an explicit name for this struct,
-// so we define it here to avoid spelling it out every time
-type FinalizedState = struct {
-	ViewNum       uint64
-	BlockHeight   uint64
-	BlockCommRoot *big.Int
-}
-
-// LightClientCallerInterface is an interface that documents the methods we utilize
-// for the espresso light client
-//
-// We define this here locally in order to effectively document the methods
-// we utilize.  This approach allows us to avoid importing the entire package
-// and allows us to easily swap implementations for testing.
-type LightClientCallerInterface interface {
-	FinalizedState(opts *bind.CallOpts) (FinalizedState, error)
-}
 
 // EspressoClient is an interface that documents the methods we utilize for
 // the espressoClient.Client.
@@ -89,12 +40,6 @@ type L1Client interface {
 	HeaderHashByNumber(ctx context.Context, number *big.Int) (common.Hash, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
 	bind.ContractCaller
-}
-
-// L2Client is the subset of the L2 execution client the streamer needs: resolving
-// the hash of the block it is anchored to, so the caller does not have to supply it.
-type L2Client interface {
-	HeaderHashByNumber(ctx context.Context, number *big.Int) (common.Hash, error)
 }
 
 // Subset of L1 state we're interested in for a particular L1 origin block:

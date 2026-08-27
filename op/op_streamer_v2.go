@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"sync"
 	"time"
 
-	espressoCommon "github.com/EspressoSystems/espresso-network/sdks/go/types"
 	"github.com/EspressoSystems/espresso-streamers/op/bindings"
 	"github.com/EspressoSystems/espresso-streamers/op/derivation"
 	"github.com/ethereum-optimism/optimism/op-service/eth"
@@ -17,144 +15,126 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
-	lru "github.com/hashicorp/golang-lru/v2"
 )
 
-const pollRPCTimeout = 10 * time.Second
-
-// defaultFinalityInterval paces the finality loop.
-const defaultFinalityInterval = 10 * time.Second
+// rpcTimeout bounds RPC calls made by the streamer. The Espresso SDK builds its client on
+// http.DefaultClient, which has no timeout, and the namespace range endpoint waits for blocks it
+// does not have rather than returning a short result, so without this a hung call continues
+// indefinitely.
+const rpcTimeout = 10 * time.Second
 
 type Streamer struct {
 	espressoClient           EspressoClient
-	l2Client                 L2Client
-	espressoLightClient      LightClientCallerInterface
 	batchAuthenticatorCaller *bindings.BatchAuthenticatorCaller
 	rollupL1Client           L1Client
+	rollupL2Client           L1Client
 	namespace                uint64
-	unmarshal                func([]byte, uint64) (*derivation.EspressoBatch, error)
 
 	store *batchStore
 
-	// Next HotShot height to read from.
-	hotShotPos uint64
-
-	// HotShot height guaranteed not to contain batches this streamer has yet to see,
-	// read from the light client at the finalized L2 block's L1 origin.
-	fallbackHotShotPos uint64
-
 	logger log.Logger
 
-	finalizedL1 eth.L1BlockRef
-
-	// lastValidatedFinalizedL2 is the highest reported finalized L2 height that was
-	// verified against the local chain, so an unchanged reading is not re-verified
-	// every tick. Written only by the finality goroutine (and the priming poll).
-	lastValidatedFinalizedL2 uint64
-
-	// Cache for finalized L1 block hashes, keyed by L1 origin block number.
-	finalizedL1StateCache *lru.Cache[uint64, l1State]
-	// Authorized batcher keyed by the HotShot header's finalized L1 block.
-	batcherAtL1FinalizedCache *lru.Cache[uint64, common.Address]
-	pollerFunc                func(context.Context) (*eth.SyncStatus, error)
-
-	mu sync.RWMutex
-
-	// How long the HotShot loop waits before retrying after a failed fetch. With a
-	// backlog available the loop runs hot.
-	retryTime time.Duration
-
-	// How long the HotShot loop waits before polling again once it has caught up with
-	// the chain.
-	idlePollInterval time.Duration
-
-	// How often the finality loop refreshes its view of L1/L2 finality.
-	finalityInterval time.Duration
+	// How often to poll hotshot for new blocks
+	hotshotPollInterval time.Duration
 
 	// Start/Stop bookkeeping.
 	lifecycleMu sync.Mutex
 	cancel      context.CancelFunc
 	wg          sync.WaitGroup
+
+	index StreamerIndex
+
+	// Used to limit the amount of memory consumed by the streamer, prevents unbounded batch
+	// fetching when batches are not being consumed.
+	maxBatchesInMemory int
 }
+
+type StreamerIndex struct {
+	HotshotPos uint64
+	L2Index    eth.BlockID
+}
+
+const (
+	// MaxBatchesInMemoryMin uses double the number of batches that would be sent during a finality
+	// interval. This should provide sufficient buffer to allow fetching hotshot batches while
+	// waiting for pruning driven by the finalized L2 blocks.
+	MaxBatchesInMemoryMin = 12 * 64 * 2
+)
+
+// BatchValidity is the verdict checkBatch reaches about a batch.
+type BatchValidity uint8
+
+const (
+	// BatchDrop indicates that the batch is invalid and should be dropped.
+	BatchDrop BatchValidity = iota
+	// BatchAccept indicates that the batch is valid and should be processed.
+	BatchAccept
+	// BatchPastFinality indicates that the batch cannot be processed yet because it is past the
+	// finality boundary.
+	BatchPastFinality
+	// BatchUndecided indicates that a problem ocurred when validating the batch, a retry is required.
+	BatchUndecided
+)
 
 // ErrAlreadyStarted is returned by Start when the poll loop is already running.
 var ErrAlreadyStarted = errors.New("streamer already started")
 
-// NewStreamer builds a streamer anchored at originBatchPos, resolving that block's
-// hash from the L2 client to seed the tip it tracks. It performs that one lookup
-// before returning.
+// NewStreamer builds a streamer anchored at originBlock, which seeds the tip it tracks.
+// The first batch it serves is that block's child.
+//
+// The caller supplies the block rather than a height for the streamer to resolve. Only
+// the caller knows which block it actually processed before shutting down; looking the
+// height up on an L2 client could return a different block for the same height after a
+// reorg, and the streamer would then extend a chain nobody derived.
 func NewStreamer(
 	ctx context.Context,
 	espressoClient EspressoClient,
 	rollupL1Client L1Client,
-	l2Client L2Client,
-	lightClient LightClientCallerInterface,
+	rollupL2Client L1Client,
 	batchAuthenticatorAddress common.Address,
 	namespace uint64,
-	unmarshal func([]byte, uint64) (*derivation.EspressoBatch, error),
-	pollerFunc func(context.Context) (*eth.SyncStatus, error),
-	retryTime time.Duration,
-	idlePollInterval time.Duration,
 	logger log.Logger,
-	originHotShotPos uint64,
-	originBatchPos uint64,
+	index StreamerIndex,
+	maxBatchesInMemory int,
+	hotshotPollInterval time.Duration,
 ) (*Streamer, error) {
 	if batchAuthenticatorAddress == (common.Address{}) {
 		return nil, fmt.Errorf("BatchAuthenticator address must be set for Espresso streamer")
 	}
-	if pollerFunc == nil {
-		return nil, fmt.Errorf("pollerFunc must be set: the poll loop needs a sync status source")
+	// The tip is what every batch is checked against, so an unset one would reject
+	// every batch the store is handed. Height 0 is legitimate, a zero hash is not.
+	if index.L2Index.Hash == (common.Hash{}) {
+		return nil, fmt.Errorf(
+			"originBlock must carry the hash of the block to resume from, got the zero hash at height %d",
+			index.L2Index.Number)
 	}
-	if l2Client == nil {
-		return nil, fmt.Errorf("l2Client must be set: the origin batch hash is resolved from it")
+	if hotshotPollInterval <= 0 {
+		return nil, fmt.Errorf("hotshotPollInterval must be positive, got %s", hotshotPollInterval)
 	}
-	if lightClient == nil {
-		return nil, fmt.Errorf("lightClient must be set: the fallback HotShot position is read from it")
+	if maxBatchesInMemory < MaxBatchesInMemoryMin {
+		logger.Warn("maxBatchesInMemory set to minimum value", "given value", maxBatchesInMemory, "minimum value", MaxBatchesInMemoryMin)
+		maxBatchesInMemory = MaxBatchesInMemoryMin
 	}
-	if retryTime <= 0 {
-		return nil, fmt.Errorf("retryTime must be positive, got %s", retryTime)
-	}
-	if idlePollInterval <= 0 {
-		return nil, fmt.Errorf("idlePollInterval must be positive, got %s", idlePollInterval)
-	}
-
-	originBatchHash, err := l2Client.HeaderHashByNumber(ctx, new(big.Int).SetUint64(originBatchPos))
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve the L2 block hash at origin batch position %d: %w", originBatchPos, err)
-	}
-	if originBatchHash == (common.Hash{}) {
-		return nil, fmt.Errorf("L2 block hash at origin batch position %d is the zero hash", originBatchPos)
-	}
-
-	finalizedL1StateCache, _ := lru.New[uint64, l1State](1000)
-	batcherAtL1FinalizedCache, _ := lru.New[uint64, common.Address](1000)
 	batchAuthenticatorCaller, err := bindings.NewBatchAuthenticatorCaller(batchAuthenticatorAddress, rollupL1Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind BatchAuthenticator at %s: %w", batchAuthenticatorAddress, err)
 	}
 	return &Streamer{
-		espressoClient:            espressoClient,
-		l2Client:                  l2Client,
-		namespace:                 namespace,
-		unmarshal:                 unmarshal,
-		pollerFunc:                pollerFunc,
-		logger:                    logger,
-		retryTime:                 retryTime,
-		idlePollInterval:          idlePollInterval,
-		finalityInterval:          defaultFinalityInterval,
-		store:                     newBatchStore(originBatchPos+1, originBatchHash, logger),
-		hotShotPos:                originHotShotPos,
-		fallbackHotShotPos:        originHotShotPos,
-		finalizedL1StateCache:     finalizedL1StateCache,
-		batcherAtL1FinalizedCache: batcherAtL1FinalizedCache,
-		rollupL1Client:            rollupL1Client,
-		espressoLightClient:       lightClient,
-		batchAuthenticatorCaller:  batchAuthenticatorCaller,
+		espressoClient:           espressoClient,
+		namespace:                namespace,
+		logger:                   logger,
+		store:                    newBatchStore(index.L2Index, logger),
+		rollupL1Client:           rollupL1Client,
+		rollupL2Client:           rollupL2Client,
+		batchAuthenticatorCaller: batchAuthenticatorCaller,
+		index:                    index,
+		maxBatchesInMemory:       maxBatchesInMemory,
+		hotshotPollInterval:      hotshotPollInterval,
 	}, nil
 }
 
-// Start launches the two background loops - one tracking finality and one pulling from
-// Espresso it returns ErrAlreadyStarted if they are already running.
+// Start launches the run method on a goroutine it returns ErrAlreadyStarted if it is already
+// running.
 func (s *Streamer) Start(ctx context.Context) error {
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
@@ -165,28 +145,109 @@ func (s *Streamer) Start(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
 
-	// Initialize finality. pollForFinality scopes its own per-phase timeouts.
-	s.pollForFinality(ctx)
-	primeCtx, cancelPrime := context.WithTimeout(ctx, pollRPCTimeout)
-	s.fastForwardToFallback(primeCtx)
-	cancelPrime()
+	s.logger.Info("espresso streamer started", "hotShotPos", s.index.HotshotPos, "hotshotPollInterval", s.hotshotPollInterval)
 
-	s.logger.Info("espresso streamer started",
-		"hotShotPos", s.hotShotPos, "retryTime", s.retryTime, "finalityInterval", s.finalityInterval)
-
-	s.wg.Add(2)
+	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		s.pollFinality(ctx)
-	}()
-	go func() {
-		defer s.wg.Done()
-		s.pollHotShot(ctx)
+		s.run(ctx, s.index.HotshotPos)
 	}()
 	return nil
 }
 
-// Stop cancels both loops and blocks until they have returned.
+// run is the core of the streamer, it pulls batches from hotshot, validates them and adds them to
+// the store once the l1 state they depend on becomes finalized and periodically prunes the store to
+// keep memory under control while allowing progression.
+func (s *Streamer) run(ctx context.Context, hotshotReadPos uint64) {
+	ticker := time.NewTicker(s.hotshotPollInterval)
+	defer ticker.Stop()
+	var outstandingBatches []*derivation.EspressoBatch
+	outstandingBatchesIndex := 0
+	initCtx, cancelInit := context.WithTimeout(ctx, rpcTimeout)
+	l1FinalizedViewHeight, err := latestFinalized(initCtx, s.rollupL1Client)
+	cancelInit()
+	if err != nil {
+		s.logger.Warn("failed to read finalized L1 view, keeping the current view", "err", err)
+	}
+OuterLoop:
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		// The streamer will load no new batches once it reaches capacity.
+		for s.store.size() < s.maxBatchesInMemory {
+			for outstandingBatchesIndex < len(outstandingBatches) {
+				batch := outstandingBatches[outstandingBatchesIndex]
+				checkCtx, cancelCheck := context.WithTimeout(ctx, rpcTimeout)
+				batchValidity, err := s.checkBatch(checkCtx, batch, l1FinalizedViewHeight)
+				cancelCheck()
+				if err != nil {
+					s.logger.Warn("encountered error while checking batch, delaying batch processing", "err", err)
+					// Something went wrong, we will retry later.
+					continue OuterLoop
+				}
+				switch batchValidity {
+				case BatchAccept:
+					s.store.insert(batch)
+				case BatchPastFinality:
+					refreshCtx, cancelRefresh := context.WithTimeout(ctx, rpcTimeout)
+					l1Finalized, err := latestFinalized(refreshCtx, s.rollupL1Client)
+					cancelRefresh()
+					if err != nil {
+						s.logger.Warn("failed to read finalized L1 view, keeping the current view", "err", err)
+						// Wait on the main ticker and try again
+						continue OuterLoop
+					}
+					if l1Finalized == l1FinalizedViewHeight {
+						// No change jump to outer loop and continue again on the ticker
+						// We'll end up fetching the latest finalized again
+						continue OuterLoop
+					}
+					// finality changed so we simply loop with the new finality value
+					l1FinalizedViewHeight = l1Finalized
+					continue
+				}
+				outstandingBatchesIndex++
+			}
+			outstandingBatchesIndex = 0
+			var hotshotBlocksProcessed uint64
+			outstandingBatches, hotshotBlocksProcessed, err = s.fetchEspressoBatches(ctx, hotshotReadPos)
+			if err != nil {
+				s.logger.Warn("encountered error while fetching batches, retrying later", "err", err)
+				// Something went wrong, we will retry later.
+				break
+			}
+			if hotshotBlocksProcessed == 0 {
+				// Up to date with hotshot, wait.
+				break
+			}
+
+			// Update our hotshot read pos
+			hotshotReadPos += hotshotBlocksProcessed
+			s.tryPrune(ctx)
+		}
+		s.tryPrune(ctx)
+	}
+}
+
+func (s *Streamer) tryPrune(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, rpcTimeout)
+	defer cancel()
+
+	// Check to see if we can prune older batches from the batch store
+	l2FinalizedViewHeight, err := latestFinalized(ctx, s.rollupL2Client)
+	if err != nil {
+		s.logger.Warn("failed to read finalized L2 view, keeping the current view", "err", err)
+		// Not a big problem, we can just continue to read batches, pruning will be delayed.
+		return
+	}
+	s.store.prune(l2FinalizedViewHeight)
+}
+
+// Stop cancels the run goroutine and blocks until it has returned.
 func (s *Streamer) Stop() {
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
@@ -201,501 +262,166 @@ func (s *Streamer) Stop() {
 	s.logger.Info("espresso streamer stopped")
 }
 
-// Peek returns the batch extending the tip the streamer is tracking, or nil if
-// there is none or it is not yet valid.
+// Next returns the next batch (the batch extending the tip the streamer is tracking) and moves the
+// tip onto it. If no batch is present at the tip nil is returned, the caller can retry later.
 //
-// Several batches can compete for the same slot with the same parent hash, so a
-// batch that resolves to BatchDrop is evicted and the next candidate is considered.
-func (s *Streamer) Peek(ctx context.Context) *derivation.EspressoBatch {
-	for {
-		batch, validity := s.store.peek()
-		if batch == nil {
-			return nil
-		}
-		if validity == BatchAccept {
-			return batch
-		}
-
-		// Undecided: retry the check that was previously blocked on L1 state.
-		validity = s.checkBatch(ctx, batch)
-		switch validity {
-		case BatchAccept:
-			s.store.setValidity(batch, validity)
-			return batch
-		case BatchDrop:
-			s.store.remove(batch)
-			continue
-		}
-		s.store.setValidity(batch, validity)
-		return nil
-	}
-}
-
-func (s *Streamer) AdvancePosition() {
-	s.store.advance()
-}
-
-// GetFallbackHotshotPos is a helper function that allows us
-// to retrieve the fallback hotshot position.
-func (s *Streamer) GetFallbackHotshotPos() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.fallbackHotShotPos
-}
-
-func (s *Streamer) UnmarshalBatch(b []byte, l1Finalized uint64) (*derivation.EspressoBatch, error) {
-	return s.unmarshal(b, l1Finalized)
-}
-
-// SetBatchPosition re-anchors the streamer onto l2Head, so the next batch it serves is
-// that block's child. Whatever it was tracking is dropped.
+// An error indicates a permanent failure, meaning that the streamer is permanently blocked and no
+// operation should be retried.
 //
-// The caller picks which head to pass - the safe or the finalized L2 head from its sync
-// status - which is what decides how far derivation is wound back.
-func (s *Streamer) SetBatchPosition(l2Head eth.L2BlockRef) {
-	if l2Head == (eth.L2BlockRef{}) {
-		s.logger.Warn("ignoring batch position with empty L2 head", "tip", s.store.tip())
-		return
-	}
-	s.logger.Info("setting streamer batch position", "l2Nr", l2Head.Number, "l2Hash", l2Head.Hash.Hex())
-	s.store.setBatchPosition(l2Head.Number+1, l2Head.Hash)
+// The tip only ever moves forward here when a batch is returened, so no block can be
+// skipped.
+func (s *Streamer) Next() (*derivation.EspressoBatch, error) {
+	return s.store.next()
 }
 
-// pollFinality keeps the streamer's view of finality current, on an interval. It is
-// deliberately not hot: finality only advances at L1 block time, and each pass costs a
-// sync-status call plus a light client read. Running it apart from the HotShot loop
-// also keeps a slow fetch from delaying finality, and vice versa.
-func (s *Streamer) pollFinality(ctx context.Context) {
-	defer s.logger.Info("finality poll loop returning")
-
-	ticker := time.NewTicker(s.finalityInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-		s.finalityTick(ctx)
-	}
-}
-
-// finalityTick refreshes the finality view and prunes the store. pollForFinality
-// validates the reading against the local chain before returning it, so a non-zero
-// height here is safe to act on; advanceOnFinalization carries its own guards.
-func (s *Streamer) finalityTick(ctx context.Context) {
-	finalizedL2 := s.pollForFinality(ctx)
-	if finalizedL2 == 0 {
-		return
-	}
-	s.store.advanceOnFinalization(finalizedL2)
-}
-
-// fastForwardToFallback jumps the HotShot cursor to the fallback position computed by
-// the priming finality poll, so a restart resumes near the finalized head instead of
-// rescanning from the configured origin. Startup-only, and only when the fallback
-// does not exceed the HotShot head.
-func (s *Streamer) fastForwardToFallback(ctx context.Context) {
-	fallback := s.GetFallbackHotshotPos()
-	if fallback <= s.hotShotPos {
-		return
-	}
-	head, err := s.espressoClient.FetchLatestBlockHeight(ctx)
-	if err != nil {
-		s.logger.Warn("cannot validate the fallback position against the HotShot head, starting from the origin",
-			"fallbackHotShotPos", fallback, "hotShotPos", s.hotShotPos, "err", err)
-		return
-	}
-	if fallback > head {
-		s.logger.Warn("fallback position is above the HotShot head, starting from the origin",
-			"fallbackHotShotPos", fallback, "hotShotHead", head)
-		return
-	}
-	s.logger.Info("fast-forwarding the HotShot cursor to the fallback position",
-		"from", s.hotShotPos, "to", fallback)
-	s.hotShotPos = fallback
-}
-
-// pollHotShot runs hot: it keeps pulling from HotShot as fast as the query service will
-// serve, so a backlog is consumed at the rate the endpoints allow rather than one batch
-// of blocks per tick. Only a failed fetch pauses it, for retryTime.
-func (s *Streamer) pollHotShot(ctx context.Context) {
-	defer s.logger.Info("hotshot poll loop returning")
-
-	for ctx.Err() == nil {
-		fetchCtx, cancelFetch := context.WithTimeout(ctx, pollRPCTimeout)
-		caughtUp, err := s.fetchEspressoTransactions(fetchCtx)
-		cancelFetch()
-
-		if err == nil {
-			if !caughtUp {
-				continue
-			}
-			// Pace the height polls if we are caught up.
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(s.idlePollInterval):
-			}
-			continue
-		}
-		select {
-		case <-ctx.Done():
-			s.logger.Info("fetch interrupted by shutdown", "err", err)
-			return
-		default:
-		}
-		s.logger.Warn("failed to fetch espresso transactions", "err", err, "retryIn", s.retryTime)
-
-		// Back off, so a persistently failing endpoint is retried rather than hammered.
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(s.retryTime):
-		}
-	}
-}
-
-// pollForFinality refreshes the streamer's view of L1 finality and the fallback HotShot
-// position, returning the finalized L2 height it saw so the caller can decide whether the
-// store needs pruning. It returns 0 when the sync status could not be used.
-func (s *Streamer) pollForFinality(ctx context.Context) uint64 {
-	// Each phase gets its own timeout so a slow phase cannot starve the ones after
-	// it (the L2 validation below must not inherit an exhausted budget).
-	statusCtx, cancelStatus := context.WithTimeout(ctx, pollRPCTimeout)
-	defer cancelStatus()
-	syncStatus, err := s.pollerFunc(statusCtx)
-	if err != nil {
-		s.logger.Warn("failed to fetch sync status", "err", err)
-		return 0
-	}
-	if syncStatus == nil {
-		s.logger.Warn("sync status is nil")
-		return 0
-	}
-	finalizedL1 := s.getLatestFinalizedL1(statusCtx, syncStatus.FinalizedL1)
-	if finalizedL1 == (eth.L1BlockRef{}) {
-		s.logger.Warn("finalized L1 block is empty")
-		return 0
-	}
-
-	s.mu.Lock()
-	// L1 finality is monotonic, so a lower number means the sync source regressed
-	if finalizedL1.Number < s.finalizedL1.Number {
-		current := s.finalizedL1
-		s.mu.Unlock()
-		s.logger.Warn("ignoring regressed finalized L1 block",
-			"current", current.Number, "reported", finalizedL1.Number)
-		return 0
-	}
-	s.finalizedL1 = finalizedL1
-	s.mu.Unlock()
-
-	// Nothing is finalized yet, so there is no L1 origin to pin a HotShot height to.
-	if syncStatus.FinalizedL2 == (eth.L2BlockRef{}) {
-		return 0
-	}
-
-	// Validate the reading against the local chain before pruning or the fallback
-	// consume it: the hash must match, not merely resolve.
-	// Rejecting a bad reading only makes pruning and the fallback staler, never wrong.
-	if syncStatus.FinalizedL2.Number > s.lastValidatedFinalizedL2 {
-		if syncStatus.FinalizedL2.Hash == (common.Hash{}) {
-			s.logger.Warn("finalized L2 reading carries a zero hash, ignoring",
-				"finalizedL2", syncStatus.FinalizedL2.Number)
-			return 0
-		}
-		verifyCtx, cancelVerify := context.WithTimeout(ctx, pollRPCTimeout)
-		localHash, err := s.l2Client.HeaderHashByNumber(verifyCtx, new(big.Int).SetUint64(syncStatus.FinalizedL2.Number))
-		cancelVerify()
-		if err != nil || localHash != syncStatus.FinalizedL2.Hash {
-			s.logger.Warn("finalized L2 reading does not match the local chain, ignoring",
-				"finalizedL2", syncStatus.FinalizedL2.Number,
-				"reportedHash", syncStatus.FinalizedL2.Hash,
-				"localHash", localHash,
-				"err", err)
-			return 0
-		}
-		s.lastValidatedFinalizedL2 = syncStatus.FinalizedL2.Number
-	}
-
-	confirmCtx, cancelConfirm := context.WithTimeout(ctx, pollRPCTimeout)
-	s.confirmEspressoBlockHeight(confirmCtx, syncStatus.FinalizedL2.L1Origin)
-	cancelConfirm()
-
-	return syncStatus.FinalizedL2.Number
-}
-
-// getLatestFinalizedL1 returns whichever view of L1 finality is further ahead: the one the
-// sync status reports, or the L1 chain's own finalized tag.
+// RewindTip rewinds the streamer's tip to the given point, so the next batch it serves is that
+// block's child. This allows re-reading batches from the tip onwards, which is required in the
+// case of a batcher channel reset. It fails if the given point is ahead of the current tip, since
+// the tip otherwise advances only as the consumer reads.
 //
-// op-node polls that tag only every `l1.epoch-poll-interval` (384s by default), so the
-// finality it reports can trail the chain by that much on top of the epoch cadence.
-// Every batch waiting on its L1 origin to finalize pays for that delay, and asking L1
-// directly costs one call per finality poll.
-func (s *Streamer) getLatestFinalizedL1(ctx context.Context, syncStatusFinalizedL1 eth.L1BlockRef) eth.L1BlockRef {
-	header, err := s.rollupL1Client.HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
-	if err != nil {
-		s.logger.Warn("failed to fetch the finalized L1 header, keeping the syncStatusFinalizedL1 view",
-			"syncStatusFinalizedL1", syncStatusFinalizedL1.Number, "err", err)
-		return syncStatusFinalizedL1
-	}
-	if header == nil || header.Number == nil {
-		s.logger.Warn("finalized L1 header is empty, keeping the syncStatusFinalizedL1 view",
-			"repsyncStatusFinalizedL1orted", syncStatusFinalizedL1.Number,
-		)
-		return syncStatusFinalizedL1
-	}
-	if header.Number.Uint64() <= syncStatusFinalizedL1.Number {
-		return syncStatusFinalizedL1
-	}
-	head, headErr := s.rollupL1Client.HeaderByNumber(ctx, big.NewInt(int64(rpc.LatestBlockNumber)))
-	if headErr != nil || head == nil || head.Number == nil {
-		s.logger.Warn("ignoring the finalized tag, no L1 head to validate it against",
-			"finalizedTag", header.Number.Uint64(), "err", headErr)
-		return syncStatusFinalizedL1
-	}
-	if header.Number.Uint64() > head.Number.Uint64() {
-		s.logger.Warn("ignoring the finalized tag, finality cannot exceed the L1 head",
-			"finalizedTag", header.Number.Uint64(), "l1Head", head.Number.Uint64())
-		return syncStatusFinalizedL1
-	}
-
-	return eth.L1BlockRef{
-		Number:     header.Number.Uint64(),
-		Hash:       header.Hash(),
-		ParentHash: header.ParentHash,
-		Time:       header.Time,
-	}
+// There is a potential edge case where the requested tip could already have been pruned, which
+// would happen if the streamer's finality view advanced past the batcher's safe head view
+// (batcher channel resets rewind to the safe head). As long as the streamer and the batcher take
+// finality from the same source this should be mitigated, since the finalized head trails the
+// safe head by ~12 minutes and both poll far more often than that.
+func (s *Streamer) RewindTip(tip eth.BlockID) error {
+	return s.store.rewindTip(tip)
 }
 
-// confirmEspressoBlockHeight pins the HotShot height that is guaranteed not to hold
-// any batch with an L1 origin at or beyond finalizedL1Origin, by reading the light
-// client's finalized state as of that L1 block. Resuming from that height cannot skip
-// an unsafe batch, which is what makes it the fallback position.
-//
-// See https://eng-wiki.espressosys.com/mainch30.html#:Components:espresso%20streamer:initializing%20hotshot%20height
-//
-// A failure is not fatal: the streamer keeps running against the position it already
-// had, so an unreachable light client only makes the fallback staler.
-func (s *Streamer) confirmEspressoBlockHeight(ctx context.Context, finalizedL1Origin eth.BlockID) {
-	hotshotState, err := s.espressoLightClient.FinalizedState(&bind.CallOpts{
-		Context:     ctx,
-		BlockNumber: new(big.Int).SetUint64(finalizedL1Origin.Number),
-	})
+// fetchEspressoBatches fetches a batch of batches from hotshot reading from the hotshotReadIndex,
+// it returns the number of hotshot blocks processed so that the caller can update the read index.
+func (s *Streamer) fetchEspressoBatches(ctx context.Context, hotshotReadIndex uint64) (batches []*derivation.EspressoBatch, hotshotBlocksProcessed uint64, err error) {
+	heightCtx, cancelHeight := context.WithTimeout(ctx, rpcTimeout)
+	hotshotHeight, err := s.espressoClient.FetchLatestBlockHeight(heightCtx)
+	cancelHeight()
 	if err != nil {
-		s.logger.Warn("failed to get finalized state from light client",
-			"l1Origin", finalizedL1Origin.Number, "err", err)
-		return
+		return nil, 0, err
+	}
+	if hotshotReadIndex >= hotshotHeight {
+		return nil, 0, nil
 	}
 
-	s.mu.Lock()
-	previous := s.fallbackHotShotPos
-	s.fallbackHotShotPos = hotshotState.BlockHeight
-	s.mu.Unlock()
-
-	// The light client reporting a lower height than before means the L1 view it was
-	// read against changed under us. The lower height is still safe to resume from, so
-	// take it, but it is worth knowing about.
-	if hotshotState.BlockHeight < previous {
-		s.logger.Warn("light client reported a lower HotShot height than the current fallback position",
-			"l1Origin", finalizedL1Origin.Number, "previous", previous, "reported", hotshotState.BlockHeight)
+	end := hotshotReadIndex + HOTSHOT_BLOCK_FETCH_LIMIT
+	// Don't go past what exists
+	if end > hotshotHeight {
+		end = hotshotHeight
 	}
-}
 
-// fetchEspressoTransactions pulls the next range of HotShot blocks and feeds the store.
-// It reports caughtUp=true when there was nothing to fetch, so the caller can pace its
-// polling instead of spinning (#39).
-func (s *Streamer) fetchEspressoTransactions(ctx context.Context) (caughtUp bool, err error) {
-	finalizedBlockHeight, err := s.espressoClient.FetchLatestBlockHeight(ctx)
+	blocksCtx, cancelBlocks := context.WithTimeout(ctx, rpcTimeout)
+	blocks, err := s.espressoClient.FetchNamespaceTransactionsInRange(blocksCtx, hotshotReadIndex, end, s.namespace)
+	cancelBlocks()
 	if err != nil {
-		return false, err
-	}
-	// The exclusive end of the fetch range is this height plus one, which would wrap.
-	if finalizedBlockHeight == math.MaxUint64 {
-		return false, fmt.Errorf("espresso block height overflows uint64")
-	}
-	if s.hotShotPos >= finalizedBlockHeight {
-		return true, nil
+		return nil, 0, err
 	}
 
-	end := s.hotShotPos + HOTSHOT_BLOCK_FETCH_LIMIT
-
-	// Don't go past whats finalized
-	if end > finalizedBlockHeight {
-		end = finalizedBlockHeight
-	}
-
-	blocks, err := s.espressoClient.FetchNamespaceTransactionsInRange(ctx, s.hotShotPos, end, s.namespace)
-	if err != nil {
-		return false, err
-	}
-
-	s.logger.Info("fetched HotShot range", "start", s.hotShotPos, "end", end, "blocks", len(blocks))
+	s.logger.Info("fetched HotShot range", "start", hotshotReadIndex, "end", end, "blocks", len(blocks))
 
 	// hotShotPos advances to end below and never rewinds, so a short response would
 	// skip the blocks it left out for good.
-	if uint64(len(blocks)) != end-s.hotShotPos {
-		return false, fmt.Errorf("hotshot range [%d, %d): got %d blocks, want %d",
-			s.hotShotPos, end, len(blocks), end-s.hotShotPos)
+	if uint64(len(blocks)) != end-hotshotReadIndex {
+		return nil, 0, fmt.Errorf("hotshot range [%d, %d): got %d blocks, want %d",
+			hotshotReadIndex, end, len(blocks), end-hotshotReadIndex)
 	}
 
 	// Fetch the headers for the same range so each batch can be authorized against
 	// the finalized L1 block of the HotShot block that carried it (see checkBatch).
-	headers, err := s.espressoClient.FetchHeadersByRange(ctx, s.hotShotPos, end)
+	headersCtx, cancelHeaders := context.WithTimeout(ctx, rpcTimeout)
+	headers, err := s.espressoClient.FetchHeadersByRange(headersCtx, hotshotReadIndex, end)
+	cancelHeaders()
 	if err != nil {
-		return false, fmt.Errorf("failed to fetch hotshot headers for range [%d, %d): %w", s.hotShotPos, end, err)
+		return nil, 0, fmt.Errorf("failed to fetch hotshot headers for range [%d, %d): %w", hotshotReadIndex, end, err)
 	}
 
 	// Batches are positionally associated with headers, so bail rather than risk
 	// authorizing a batch against another block's anchor.
 	if len(headers) != len(blocks) {
-		return false, fmt.Errorf("hotshot header/transaction count mismatch for range [%d, %d): %d headers vs %d blocks",
-			s.hotShotPos, end, len(headers), len(blocks))
+		return nil, 0, fmt.Errorf("hotshot header/transaction count mismatch for range [%d, %d): %d headers vs %d blocks",
+			hotshotReadIndex, end, len(headers), len(blocks))
 	}
-	// Validate the whole range before processing any of it.
+	// Process the range and validate the header continuity
 	for i := range headers {
-		if got, want := headers[i].Header.GetBlockHeight(), s.hotShotPos+uint64(i); got != want {
-			return false, fmt.Errorf("hotshot headers not contiguous/ordered for range [%d, %d): header index %d has height %d, expected %d",
-				s.hotShotPos, end, i, got, want)
+		hotshotHeight := hotshotReadIndex + uint64(i)
+		if got, want := headers[i].Header.GetBlockHeight(), hotshotHeight; got != want {
+			return nil, 0, fmt.Errorf("hotshot headers not contiguous/ordered for range [%d, %d): header index %d has height %d, expected %d",
+				hotshotReadIndex, end, i, got, want)
 		}
-		// Batches are authorized against this L1 finalized header, so one without it is
-		// unusable. It is nil only if Espresso started before the L1 finalized any block
-		// (impossible on a live chain)
-		// https://github.com/EspressoSystems/espresso-network/blob/main/crates/espresso/types/src/v0/v0_1/l1.rs#L64-L72
-		if headers[i].Header.GetL1Finalized() == nil {
-			return false, fmt.Errorf("hotshot header at height %d reports no finalized L1 block",
-				s.hotShotPos+uint64(i))
-		}
-	}
-
-	for i, block := range blocks {
-		hotShotHeight := s.hotShotPos + uint64(i)
-		// Non-nil, validated above.
-		l1Finalized := headers[i].Header.GetL1Finalized().Number
-
-		for _, txn := range block.Transactions {
-			s.process(ctx, hotShotHeight, l1Finalized, &txn)
+		for txIndex, tx := range blocks[i].Transactions {
+			batch, err := derivation.UnmarshalEspressoTransaction(tx.Payload, headers[i].Header)
+			if err != nil {
+				// Anyone can post to the namespace, so undecodable payloads are ordinary traffic.
+				s.logger.Warn("failed to unmarshal batch", "hotShotHeight", hotshotHeight, "batch index", txIndex, "err", err)
+				continue
+			}
+			batches = append(batches, batch)
 		}
 	}
-
-	s.hotShotPos = end
-	return false, nil
+	return batches, end - hotshotReadIndex, nil
 }
 
-func (s *Streamer) process(ctx context.Context, hotShotHeight uint64, l1Finalized uint64, txn *espressoCommon.Transaction) {
-	batch, err := s.unmarshal(txn.Payload, l1Finalized)
-	if err != nil {
-		s.logger.Warn("failed to unmarshal batch", "hotShotHeight", hotShotHeight, "err", err)
-		return
-	}
-
-	validity := s.checkBatch(ctx, batch)
-	switch validity {
-	case BatchDrop:
-		return
-	case BatchPast:
-		s.logger.Info("Batch already processed. Skipping", "batch", batch.Number(), "hash", batch.BatchHeader.Hash())
-		return
-	case BatchUndecided:
-		s.logger.Warn("Inserting undecided batch", "batch", batch.Hash())
-	case BatchAccept:
-	}
-	s.store.insert(batch, validity)
-}
-
-// checkBatch validates a batch: its signer must be the batcher authorized at the
-// batch's L1Finalized (the finalized L1 block reported by the HotShot header that
-// carried it), and its declared L1 origin must match a real L1 block. Both L1
-// heights must be finalized from our local node's point of view before a batch can
-// be decided; until then it is BatchUndecided.
-func (s *Streamer) checkBatch(ctx context.Context, batch *derivation.EspressoBatch) BatchValidity {
-	// A batch at or below the finalized L2 head has already been derived, so there is
-	// nothing to do with it.
-	if batch.Number() <= s.store.finalizedL2() {
-		return BatchPast
-	}
-
+// checkBatch decides whether a batch is valid. It returns a variable indicating whether the batch
+// is valid, invalid or requires finality to progress in order for it to be validated. Invalid
+// batches should be dropped. If an error is returned it indicates a problem fetching the data to
+// validate a batch meaning the batch was not validated and the operation should be retried at some
+// later point.
+//
+// For a batch to be considered valid its signer must be the batcher authorized at the batch's
+// L1Finalized - the finalized L1 block reported by the HotShot header that carried it - and its
+// declared L1 origin must match a real finalized L1 block.
+//
+// Since espresso can confirm batches out of order, the parent hash linkage cannot be checked here,
+// instead it is checked when each batch is consumed.
+func (s *Streamer) checkBatch(ctx context.Context, batch *derivation.EspressoBatch, l1FinalityView uint64) (BatchValidity, error) {
 	l1Finalized := batch.L1Finalized
-
-	s.mu.RLock()
-	finalizedL1 := s.finalizedL1
-	s.mu.RUnlock()
-
-	// Make sure the finalized L1 block is initialized before comparing block numbers.
-	if finalizedL1 == (eth.L1BlockRef{}) {
-		s.logger.Error("Finalized L1 block not initialized")
-		return BatchUndecided
+	if l1Finalized > l1FinalityView {
+		return BatchPastFinality, nil
 	}
 
-	// Ensure Espresso L1 finalized is actually finalized
-	if l1Finalized > finalizedL1.Number {
-		s.logger.Warn("HotShot header reports an L1 finality we have not observed yet, pending resync",
-			"headerL1Finalized", l1Finalized, "ourL1Finalized", finalizedL1.Number)
-		return BatchUndecided
-	}
-
-	// Look up the batcher authorized at l1Finalized which is read from Espresso Header
-	authorizedBatcher, ok := s.batcherAtL1FinalizedCache.Get(l1Finalized)
-	if !ok {
-		batcher, err := s.batchAuthenticatorCaller.EspressoBatcherAtBlock(
-			&bind.CallOpts{Context: ctx},
-			l1Finalized,
-		)
-		if err != nil {
-			s.logger.Warn("Failed to fetch the espresso batcher address, pending resync",
-				"l1Finalized", l1Finalized, "error", err)
-			return BatchUndecided
-		}
-		authorizedBatcher = batcher
-		s.batcherAtL1FinalizedCache.Add(l1Finalized, batcher)
+	authorizedBatcher, err := s.batchAuthenticatorCaller.EspressoBatcherAtBlock(
+		&bind.CallOpts{Context: ctx},
+		l1Finalized,
+	)
+	if err != nil {
+		return BatchUndecided, fmt.Errorf("failed to fetch the espresso batcher at L1 block %d: %w", l1Finalized, err)
 	}
 
 	if authorizedBatcher == (common.Address{}) || batch.SignerAddress != authorizedBatcher {
 		s.logger.Info(DroppingBatchLogPrefix+" with invalid espresso batcher",
 			"batch", batch.Hash(), "signer", batch.SignerAddress,
 			"l1Finalized", l1Finalized, "authorizedBatcher", authorizedBatcher)
-		return BatchDrop
+		return BatchDrop, nil
 	}
 
-	// Signer is authorized. The declared L1 origin must be finalized before we can
-	// verify its hash. This stays after the signer check deliberately: origin is
-	// declared by the batch, so an unauthorized batch naming a far-future origin
-	// would otherwise be stored as undecided instead of being dropped outright.
+	// The origin check stays after the signer check deliberately: the origin is
+	// declared by the batch and anyone can post to the namespace, so checking it first
+	// would let a stranger stall the streamer indefinitely by naming a far-future
+	// origin. Only the authorized batcher can make us wait here.
 	origin := batch.L1Origin()
-	if origin.Number > finalizedL1.Number {
-		s.logger.Warn("L1 origin not finalized, pending resync",
-			"finalized L1 block number", finalizedL1.Number, "origin number", origin.Number)
-		return BatchUndecided
+	if origin.Number > l1FinalityView {
+		return BatchPastFinality, nil
 	}
-
 	// Validate that the batch's declared L1 origin references a real L1 block.
-	state, err := s.l1StateAt(ctx, origin.Number)
+	hash, err := s.rollupL1Client.HeaderHashByNumber(ctx, new(big.Int).SetUint64(origin.Number))
 	if err != nil {
-		s.logger.Warn("Failed to fetch L1 origin state, pending resync", "error", err)
-		return BatchUndecided
+		return BatchUndecided, fmt.Errorf("failed to fetch L1 header: %w", err)
 	}
-	if state.hash != origin.Hash {
+	if hash != origin.Hash {
 		s.logger.Warn(DroppingBatchLogPrefix + " with invalid L1 origin hash")
-		return BatchDrop
+		return BatchDrop, nil
 	}
-	return BatchAccept
+	return BatchAccept, nil
 }
 
-// l1StateAt returns the L1 block hash at the given L1 block number, fetching
-// from L1 and caching the result on a cache miss.
-func (s *Streamer) l1StateAt(ctx context.Context, number uint64) (l1State, error) {
-	if state, ok := s.finalizedL1StateCache.Get(number); ok {
-		return state, nil
-	}
-
-	hash, err := s.rollupL1Client.HeaderHashByNumber(ctx, new(big.Int).SetUint64(number))
+// latestFinalized fetches the latest finalized header number from the given client and checks that the
+// header and header.Number are non nil.
+func latestFinalized(ctx context.Context, client L1Client) (uint64, error) {
+	header, err := client.HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
 	if err != nil {
-		return l1State{}, fmt.Errorf("failed to fetch L1 header: %w", err)
+		return 0, fmt.Errorf("failed to fetch the finalized header: %w", err)
 	}
-
-	state := l1State{hash: hash}
-	s.finalizedL1StateCache.Add(number, state)
-	return state, nil
+	// A client that answers the finalized tag with nothing usable is reporting a state
+	// we cannot act on, so it is an error rather than an absent change.
+	if header == nil || header.Number == nil {
+		return 0, fmt.Errorf("finalized header is empty")
+	}
+	return header.Number.Uint64(), nil
 }

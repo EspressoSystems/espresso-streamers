@@ -34,6 +34,11 @@ type EspressoBatch struct {
 	// It is attached locally after decoding rather than carried in the payload,
 	// hence excluded from the RLP encoding.
 	L1Finalized uint64 `rlp:"-"`
+	// HotshotHeight is the hotshot height of the hotshot block containing this batch.
+	//
+	// It is attached locally after decoding rather than carried in the payload,
+	// hence excluded from the RLP encoding.
+	HotshotHeight uint64 `rlp:"-"`
 }
 
 func (b EspressoBatch) Number() uint64 {
@@ -90,17 +95,14 @@ func BlockToEspressoBatch(rollupCfg *rollup.Config, block *types.Block) (*Espres
 	}, nil
 }
 
-// CreateEspressoBatchUnmarshaler returns a function that can be used to
-// unmarshal an Espresso transaction into an EspressoBatch.
-// The signer address is recovered from the signature and stored on the batch
-// for later verification in CheckBatch (two-phase verification).
-func CreateEspressoBatchUnmarshaler() func(data []byte, l1Finalized uint64) (*EspressoBatch, error) {
-	return func(data []byte, l1Finalized uint64) (*EspressoBatch, error) {
-		return UnmarshalEspressoTransaction(data, l1Finalized)
-	}
-}
-
-func UnmarshalEspressoTransaction(data []byte, l1Finalized uint64) (*EspressoBatch, error) {
+// UnmarshalEspressoTransaction decodes an Espresso transaction payload into an
+// EspressoBatch. The signer address is recovered from the signature and stored on the
+// batch for later verification in checkBatch (two-phase verification).
+//
+// l1Finalized is not carried in the payload: it is the finalized L1 block reported by
+// the HotShot header that ordered this transaction, attached here so checkBatch can
+// anchor the batcher lookup to it. See the field comment on EspressoBatch.L1Finalized.
+func UnmarshalEspressoTransaction(data []byte, espressoHeader espressoCommon.HeaderInterface) (*EspressoBatch, error) {
 	if len(data) < crypto.SignatureLength {
 		return nil, fmt.Errorf("transaction data too short: %d bytes, need at least %d", len(data), crypto.SignatureLength)
 	}
@@ -131,7 +133,20 @@ func UnmarshalEspressoTransaction(data []byte, l1Finalized uint64) (*EspressoBat
 	if batch.L1InfoDeposit == nil {
 		return nil, fmt.Errorf("batch is missing the L1 info deposit transaction")
 	}
-	batch.L1Finalized = l1Finalized
+	// This value is used as a deterministic shared finality pointer against which to validate
+	// the batcher that submitted a batch. Previously we used the L1 origin of the batch but
+	// actually that was not safe because an attacker can choose it. We can't use our local view
+	// of finality because that can differ between instances allowing for them to diverge. The
+	// value is nil only if Espresso started before the L1 finalized any block (impossible on a
+	// live chain)
+	// https://github.com/EspressoSystems/espresso-network/blob/main/crates/espresso/types/src/v0/v0_1/l1.rs#L64-L72
+	espressoL1FinalizedView := espressoHeader.GetL1Finalized()
+	if espressoL1FinalizedView == nil {
+		return nil, fmt.Errorf("hotshot header at height %d reports no finalized L1 block",
+			espressoHeader.GetBlockHeight())
+	}
+	batch.L1Finalized = espressoL1FinalizedView.Number
+	batch.HotshotHeight = espressoHeader.GetBlockHeight()
 
 	return &batch, nil
 }
