@@ -49,6 +49,11 @@ func (b BatchMock) Signer() common.Address {
 	return common.Address{}
 }
 
+// L1Finalized implements op.Batch
+func (b BatchMock) L1Finalized() uint64 {
+	return 0
+}
+
 // createBatchMock is a helper function to create a new BatchMock instance.
 func createBatchMock(number uint64, l1Origin eth.BlockID) *BatchMock {
 	return &BatchMock{
@@ -78,7 +83,10 @@ type MockStreamer[B espresso.Batch] struct {
 	fallbackHotshotPos uint64
 }
 
-var _ espresso.EspressoStreamer[espresso.Batch] = (*MockStreamer[espresso.Batch])(nil)
+// NOTE: MockStreamer no longer asserts against espresso.EspressoStreamer: the
+// external optimism/espresso package still has the pre-l1Finalized UnmarshalBatch
+// signature ([]byte), which this MockStreamer no longer matches. Once the
+// integration repo picks up the l1Finalized change, this assertion can return.
 var _ op.EspressoStreamer[BatchMock] = (*MockStreamer[BatchMock])(nil)
 
 // Update implements espresso.EspressoStreamer
@@ -113,9 +121,9 @@ func (m *MockStreamer[B]) Reset() {
 }
 
 // UnmarshalBatch implements espresso.EspressoStreamer
-func (m *MockStreamer[B]) UnmarshalBatch(b []byte) (*B, error) {
+func (m *MockStreamer[B]) UnmarshalBatch(b []byte, l1Finalized uint64) (*B, error) {
 	panic("unimplemented")
-	// return m.unmarshalBatch(b)
+	// return m.unmarshalBatch(b, l1Finalized)
 }
 
 // HasNext implements espresso.EspressoStreamer
@@ -214,7 +222,7 @@ func TestBufferedStreamerMitigationBehavior(t *testing.T) {
 	mockStreamer := &MockStreamer[BatchMock]{
 		createBatch: createBatchMock,
 	}
-	streamer := espresso.NewBufferedEspressoStreamer(mockStreamer)
+	streamer := op.NewBufferedEspressoStreamer(mockStreamer)
 
 	// Refresh the streamer with an advanced safe L1 origin
 	require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
@@ -248,7 +256,7 @@ func TestBufferedStreamerReOrgBehavior(t *testing.T) {
 	mockStreamer := &MockStreamer[BatchMock]{
 		createBatch: createBatchMock,
 	}
-	streamer := espresso.NewBufferedEspressoStreamer(mockStreamer)
+	streamer := op.NewBufferedEspressoStreamer(mockStreamer)
 
 	// Refresh the streamer with an advanced safe L1 origin
 	require.NoError(t, streamer.Refresh(ctx, eth.L1BlockRef{Number: 5}, 0, eth.BlockID{Number: 10}))
