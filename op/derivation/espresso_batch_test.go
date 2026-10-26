@@ -59,7 +59,7 @@ func TestUnmarshalEspressoTransactionTooShort(t *testing.T) {
 		make([]byte, crypto.SignatureLength-1),
 	}
 	for _, data := range cases {
-		_, err := UnmarshalEspressoTransaction(data)
+		_, err := UnmarshalEspressoTransaction(data, 0)
 		require.Error(t, err, "expected error for %d-byte input", len(data))
 	}
 }
@@ -84,7 +84,7 @@ func TestUnmarshalEspressoTransactionRejectsOversizedHeaderNumber(t *testing.T) 
 	sig, err := crypto.Sign(crypto.Keccak256(buf.Bytes()), key)
 	require.NoError(t, err)
 
-	_, err = UnmarshalEspressoTransaction(append(sig, buf.Bytes()...))
+	_, err = UnmarshalEspressoTransaction(append(sig, buf.Bytes()...), 0)
 	require.ErrorContains(t, err, "does not fit in uint64")
 }
 
@@ -118,7 +118,7 @@ func TestBatchRoundtrip(t *testing.T) {
 	)
 	require.NoError(t, err, "failed to serialize batch to Espresso transaction")
 
-	decodedBatch, err := UnmarshalEspressoTransaction(transaction.Payload)
+	decodedBatch, err := UnmarshalEspressoTransaction(transaction.Payload, 0)
 	require.NoError(t, err, "failed to deserialize Espresso transaction back to batch")
 
 	// The signer recovered from the payload signature must be the batcher.
